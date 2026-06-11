@@ -1,5 +1,7 @@
 // MarkPad 渲染进程逻辑
 let vditor = null;
+let vditorReady = false;
+let pendingValue = null;
 let isDirty = false;
 let outlineVisible = false;
 let darkMode = false;
@@ -60,11 +62,27 @@ $$\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}$$
 开始你的创作吧 ✍️
 `;
 
+function loadContent(value) {
+  // 实例已就绪时，直接 setValue（Vditor 会正确重渲染 DOM）；
+  // 避免 destroy + new 的异步竞态导致内容拿得到却渲染不出来。
+  if (vditor && vditorReady) {
+    vditor.setValue(value || '');
+    markDirty(false);
+    updateStats();
+    refreshOutline();
+    return;
+  }
+  // 实例尚未就绪：记下待加载内容，等 after 回调里再 setValue
+  pendingValue = value || '';
+  if (!vditor) initVditor(pendingValue);
+}
+
 function initVditor(value) {
   if (vditor) {
     vditor.destroy();
     document.getElementById('vditor').innerHTML = '';
   }
+  vditorReady = false;
   vditor = new Vditor('vditor', {
     mode: 'ir', // 即时渲染 = Typora 体验
     value: value || '',
@@ -85,6 +103,13 @@ function initVditor(value) {
       refreshOutline();
     },
     after: () => {
+      vditorReady = true;
+      // 若有挂起的待加载内容（实例初始化期间收到的打开请求），此时写入
+      if (pendingValue !== null) {
+        vditor.setValue(pendingValue);
+        pendingValue = null;
+        markDirty(false);
+      }
       updateStats();
       refreshOutline();
       applyEditorTheme();
@@ -173,13 +198,13 @@ function toggleTheme() {
 
 // ============ IPC 事件绑定 ============
 window.markpad.onFileOpened(({ path, content }) => {
-  initVditor(content);
+  loadContent(content);
   statusFile.textContent = path.split('/').pop();
   markDirty(false);
 });
 
 window.markpad.onFileNew(() => {
-  initVditor('');
+  loadContent('');
   statusFile.textContent = '未命名';
   markDirty(false);
 });
