@@ -4,6 +4,11 @@ let vditorReady = false;
 let pendingValue = null;
 let isDirty = false;
 let outlineVisible = false;
+let sourceVisible = false;
+// 源码↔渲染双向同步时用来抑制回环
+let syncingFromVditor = false;
+let syncingFromSource = false;
+let sourceSyncTimer = null;
 // 主题模式：'light' | 'dark' | 'system'，持久化到 localStorage
 let themeMode = localStorage.getItem('markpad-theme') || 'system';
 // 当前是否实际处于暗色（system 模式下由系统决定）
@@ -18,6 +23,8 @@ const statusFile = document.getElementById('status-file');
 const statusWords = document.getElementById('status-words');
 const statusCursor = document.getElementById('status-cursor');
 const outlineEl = document.getElementById('outline');
+const sourceEl = document.getElementById('source-pane');
+const sourceEditor = document.getElementById('source-editor');
 
 const WELCOME = `# 欢迎使用 MarkPad
 
@@ -48,6 +55,7 @@ hello('MarkPad');
 | 打开 | ⌘O |
 | 保存 | ⌘S |
 | 切换大纲 | ⌘\\\\ |
+| 切换源码 | ⌘E |
 | 切换主题 | ⌘/ |
 
 ## 数学公式
@@ -60,10 +68,11 @@ $$\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}$$
 
 - [x] 实时渲染
 - [x] 大纲导航
+- [x] 源码视图
 - [x] 暗色主题
 - [ ] 你的下一篇文档
 
-> 提示：⌘S 保存，⌘\\\\ 打开大纲，⌘/ 切换暗色模式。
+> 提示：⌘S 保存，⌘\\\\ 打开大纲，⌘E 打开源码，⌘/ 切换暗色模式。
 
 ---
 
@@ -74,10 +83,13 @@ function loadContent(value) {
   // 实例已就绪时，直接 setValue（Vditor 会正确重渲染 DOM）；
   // 避免 destroy + new 的异步竞态导致内容拿得到却渲染不出来。
   if (vditor && vditorReady) {
+    syncingFromSource = true;
     vditor.setValue(value || '');
+    syncingFromSource = false;
     markDirty(false);
     updateStats();
     refreshOutline();
+    syncSourceFromVditor(true);
     return;
   }
   // 实例尚未就绪：记下待加载内容，等 after 回调里再 setValue
@@ -106,21 +118,28 @@ function initVditor(value) {
     outline: { enable: true, position: 'left' },
     placeholder: '开始输入…',
     input: () => {
-      markDirty(true);
-      updateStats();
-      refreshOutline();
+      // 用户在中间渲染区编辑：标脏 + 刷新大纲 + 同步到右侧源码
+      if (!syncingFromSource) {
+        markDirty(true);
+        updateStats();
+        refreshOutline();
+        syncSourceFromVditor();
+      }
     },
     after: () => {
       vditorReady = true;
       // 若有挂起的待加载内容（实例初始化期间收到的打开请求），此时写入
       if (pendingValue !== null) {
+        syncingFromSource = true;
         vditor.setValue(pendingValue);
+        syncingFromSource = false;
         pendingValue = null;
         markDirty(false);
       }
       updateStats();
       refreshOutline();
       applyEditorTheme();
+      syncSourceFromVditor(true);
     }
   });
 }
@@ -139,7 +158,18 @@ function updateStats() {
   statusWords.textContent = `${cn + en} 字`;
 }
 
-// 从 vditor 自带 outline 同步到我们自己的侧栏
+// ========= 大纲：从内容解析标题 → 与 DOM 中真实 h 元素按顺序绑定 =========
+let parsedHeadings = []; // [{level, text, slug}]
+
+function slugify(text) {
+  // 用文本+顺序生成稳定 id；GitHub 风格 slug 不一定够稳定，这里用顺序保险
+  return 'mp-h-' + text.toLowerCase()
+    .replace(/[#*`~_>]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^\w\u4e00-\u9fa5\-]/g, '')
+    .slice(0, 60);
+}
+
 function refreshOutline() {
   if (!vditor) return;
   const value = vditor.getValue() || '';
@@ -150,8 +180,16 @@ function refreshOutline() {
     if (line.trim().startsWith('```')) { inCode = !inCode; return; }
     if (inCode) return;
     const m = line.match(/^(#{1,6})\s+(.+)/);
-    if (m) headings.push({ level: m[1].length, text: m[2].replace(/[#*`]/g, '').trim() });
+    if (m) {
+      const text = m[2].replace(/[#*`]/g, '').trim();
+      headings.push({ level: m[1].length, text, slug: slugify(text) });
+    }
   });
+  parsedHeadings = headings;
+
+  // 给编辑器里真实 h 元素挂 id，方便 scrollIntoView
+  tagHeadingsInDom();
+
   const container = document.getElementById('outline-content');
   if (!headings.length) {
     container.innerHTML = '<div style="padding:8px 16px;font-size:12px;color:var(--status-text)">暂无标题</div>';
@@ -160,27 +198,105 @@ function refreshOutline() {
   container.innerHTML = headings.map((h, i) =>
     `<div class="vditor-outline__item" style="padding-left:${16 + (h.level - 1) * 12}px" data-idx="${i}">${escapeHtml(h.text)}</div>`
   ).join('');
-  // 点击跳转
+  // 点击跳转：按"第 i 个标题"对应到 DOM 里的第 i 个 h
   container.querySelectorAll('.vditor-outline__item').forEach((el, i) => {
-    el.onclick = () => scrollToHeading(headings[i].text);
+    el.onclick = () => scrollToHeadingByIndex(i);
   });
 }
 
-function scrollToHeading(text) {
-  const editor = document.querySelector('.vditor-ir__content') || document.querySelector('.vditor-reset');
-  if (!editor) return;
-  const hs = editor.querySelectorAll('h1,h2,h3,h4,h5,h6');
-  for (const h of hs) {
-    if (h.textContent.trim().replace(/[#]/g, '').includes(text)) {
-      h.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      break;
+function getEditorRoot() {
+  // Vditor IR 模式的实际滚动容器是 .vditor-ir > .vditor-ir__content（外层），内容渲染区是 .vditor-reset
+  return document.querySelector('.vditor-ir .vditor-reset')
+      || document.querySelector('.vditor-reset')
+      || document.querySelector('.vditor-ir__content');
+}
+
+function getEditorHeadings() {
+  const root = getEditorRoot();
+  if (!root) return [];
+  // Vditor IR 模式下，标题的 wrapper 通常是 .vditor-ir__node 包着原生 h1~h6
+  return Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+}
+
+function tagHeadingsInDom() {
+  const hs = getEditorHeadings();
+  hs.forEach((h, i) => {
+    if (parsedHeadings[i]) {
+      h.dataset.mpIdx = String(i);
+      h.id = parsedHeadings[i].slug;
     }
+  });
+}
+
+function scrollToHeadingByIndex(idx) {
+  // 先 tag 一遍，避免内容刚变 DOM 还没贴 id
+  tagHeadingsInDom();
+  const hs = getEditorHeadings();
+  const target = hs[idx];
+  if (!target) return;
+  // 编辑器实际滚动容器：Vditor IR 模式下是 .vditor-ir__content
+  const scroller = target.closest('.vditor-ir__content')
+    || target.closest('.vditor-reset')
+    || getEditorRoot();
+  if (scroller && scroller.scrollTo) {
+    // 用 offset 计算更可靠：scrollIntoView 在虚拟父级里有时不准
+    const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 12;
+    scroller.scrollTo({ top, behavior: 'smooth' });
+  } else {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+  // 高亮当前项
+  document.querySelectorAll('#outline-content .vditor-outline__item').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
 }
 
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// ========= 源码面板 ↔ 渲染编辑器 双向同步 =========
+function syncSourceFromVditor(immediate) {
+  if (!vditor || !vditorReady) return;
+  if (syncingFromSource) return;
+  if (sourceEditor.matches(':focus')) return; // 用户正在编辑源码，不要被覆盖
+  const val = vditor.getValue() || '';
+  if (sourceEditor.value === val) return;
+  syncingFromVditor = true;
+  sourceEditor.value = val;
+  syncingFromVditor = false;
+}
+
+function syncVditorFromSource() {
+  if (!vditor || !vditorReady) return;
+  if (syncingFromVditor) return;
+  const val = sourceEditor.value;
+  if ((vditor.getValue() || '') === val) return;
+  syncingFromSource = true;
+  // 记录光标在源码里的相对位置（行号）以便不被打断
+  vditor.setValue(val);
+  syncingFromSource = false;
+  markDirty(true);
+  updateStats();
+  refreshOutline();
+}
+
+// 源码侧输入：节流同步到 vditor，避免每个按键都重渲染
+sourceEditor.addEventListener('input', () => {
+  if (syncingFromVditor) return;
+  // 标脏立即生效
+  markDirty(true);
+  clearTimeout(sourceSyncTimer);
+  sourceSyncTimer = setTimeout(() => {
+    syncVditorFromSource();
+  }, 220);
+});
+
+// 失焦时立即同步一次（避免长时间 pending）
+sourceEditor.addEventListener('blur', () => {
+  clearTimeout(sourceSyncTimer);
+  syncVditorFromSource();
+});
 
 function applyEditorTheme() {
   document.body.classList.toggle('dark', darkMode);
@@ -217,6 +333,14 @@ function toggleOutline() {
   if (outlineVisible) refreshOutline();
 }
 
+function toggleSource() {
+  sourceVisible = !sourceVisible;
+  sourceEl.classList.toggle('hidden', !sourceVisible);
+  const btn = document.getElementById('source-toggle');
+  if (btn) btn.classList.toggle('active', sourceVisible);
+  if (sourceVisible) syncSourceFromVditor(true);
+}
+
 // ⌘/ 快捷键：在 亮 → 暗 → 跟随系统 之间循环
 function toggleTheme() {
   const order = ['light', 'dark', 'system'];
@@ -249,6 +373,7 @@ window.markpad.onRequestSave(async ({ saveAs }) => {
     markDirty(false);
     if (res.path) statusFile.textContent = res.path.split('/').pop();
   }
+  return res;
 });
 
 window.markpad.onRequestExportHtml(async () => {
@@ -258,8 +383,38 @@ window.markpad.onRequestExportHtml(async () => {
 });
 
 window.markpad.onToggleOutline(() => toggleOutline());
+window.markpad.onToggleSource(() => toggleSource());
 window.markpad.onToggleTheme(() => toggleTheme());
 window.markpad.onSetTheme((mode) => setTheme(mode));
+
+// 关闭窗口前主进程问询：当前是否脏 + 同步保存
+window.markpad.onConfirmClose(async () => {
+  if (!isDirty) {
+    window.markpad.confirmCloseReply({ action: 'discard' });
+    return;
+  }
+  // 由主进程弹原生对话框，渲染进程只负责按命令保存
+  const action = await window.markpad.askCloseConfirm();
+  if (action === 'cancel') {
+    window.markpad.confirmCloseReply({ action: 'cancel' });
+    return;
+  }
+  if (action === 'discard') {
+    window.markpad.confirmCloseReply({ action: 'discard' });
+    return;
+  }
+  // save
+  const content = vditor ? vditor.getValue() : '';
+  const res = await window.markpad.saveContent(content, false);
+  if (res.saved) {
+    markDirty(false);
+    if (res.path) statusFile.textContent = res.path.split('/').pop();
+    window.markpad.confirmCloseReply({ action: 'discard' });
+  } else {
+    // 用户在保存对话框里取消了 → 把"关闭"也取消，避免误丢
+    window.markpad.confirmCloseReply({ action: 'cancel' });
+  }
+});
 
 // 右上角主题切换按钮：点击循环 亮 → 暗 → 跟随系统
 const themeToggleBtn = document.getElementById('theme-toggle');
@@ -273,6 +428,22 @@ if (themeToggleBtn) {
   themeToggleBtn.addEventListener('click', (e) => {
     e.preventDefault();
     toggleTheme();
+  });
+}
+
+// 右上角源码切换按钮
+const sourceToggleBtn = document.getElementById('source-toggle');
+if (sourceToggleBtn) {
+  sourceToggleBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleSource();
+  });
+}
+const sourceCloseBtn = document.getElementById('source-close');
+if (sourceCloseBtn) {
+  sourceCloseBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (sourceVisible) toggleSource();
   });
 }
 

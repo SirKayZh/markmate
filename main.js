@@ -5,10 +5,16 @@ const fs = require('fs');
 let mainWindow = null;
 // 记录每个窗口当前打开的文件路径
 let currentFilePath = null;
+// 当前是否脏（渲染层告知，主进程缓存一份供关闭确认使用）
+let currentDirty = false;
 // 冷启动时（窗口/渲染进程尚未就绪）通过 open-file / 命令行传入的待打开文件
 let pendingOpenPath = null;
 // 渲染进程是否已准备好接收 file-opened
 let rendererReady = false;
+// 关闭流程状态：是否已经被用户/渲染层确认可放行
+let allowClose = false;
+// 是否正在等待渲染层回复
+let closingInProgress = false;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -30,11 +36,28 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
     rendererReady = false;
+    allowClose = false;
+    closingInProgress = false;
   });
 
-  // 拦截关闭：若有未保存内容，提示
+  // 拦截关闭：未保存时让渲染层走一遍确认流程
   mainWindow.on('close', (e) => {
-    // 关闭确认交由渲染进程处理（通过菜单/快捷键流程），这里保持简单
+    if (allowClose) return;          // 已经确认过，放行
+    if (!currentDirty) return;       // 没有未保存改动，放行
+    if (closingInProgress) {         // 正在等回复，避免重复弹
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    closingInProgress = true;
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('confirm-close');
+    } else {
+      // 渲染层不可用，安全起见放行
+      allowClose = true;
+      closingInProgress = false;
+      mainWindow && mainWindow.close();
+    }
   });
 }
 
@@ -120,7 +143,39 @@ ipcMain.handle('save-content', async (event, { content, saveAs }) => {
 
 // 渲染进程通知脏状态
 ipcMain.on('set-dirty', (event, dirty) => {
-  setTitle(currentFilePath, dirty);
+  currentDirty = !!dirty;
+  setTitle(currentFilePath, currentDirty);
+});
+
+// 关闭确认：弹原生对话框，返回用户选择
+ipcMain.handle('ask-close-confirm', async () => {
+  if (!mainWindow) return 'cancel';
+  const name = currentFilePath ? path.basename(currentFilePath) : '未命名';
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['保存', '不保存', '取消'],
+    defaultId: 0,
+    cancelId: 2,
+    title: '未保存的更改',
+    message: `“${name}” 有尚未保存的更改`,
+    detail: '关闭前是否要保存？'
+  });
+  if (response === 0) return 'save';
+  if (response === 1) return 'discard';
+  return 'cancel';
+});
+
+// 渲染层告知关闭流程的最终决定
+ipcMain.on('confirm-close-reply', (event, payload) => {
+  const action = payload && payload.action;
+  closingInProgress = false;
+  if (action === 'discard') {
+    allowClose = true;
+    if (mainWindow) mainWindow.close();
+  } else {
+    // cancel：保持窗口
+    allowClose = false;
+  }
 });
 
 // 新建
@@ -187,6 +242,7 @@ function buildMenu() {
       label: '视图',
       submenu: [
         { label: '切换大纲', accelerator: 'CmdOrCtrl+\\', click: () => mainWindow.webContents.send('toggle-outline') },
+        { label: '切换源码面板', accelerator: 'CmdOrCtrl+E', click: () => mainWindow.webContents.send('toggle-source') },
         {
           label: '主题',
           submenu: [
@@ -269,6 +325,15 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+// 拦截退出：若窗口仍存在且脏，让 close 流程先走完
+app.on('before-quit', (e) => {
+  if (mainWindow && currentDirty && !allowClose) {
+    e.preventDefault();
+    // 触发窗口 close 流程，它会发 confirm-close 给渲染层
+    mainWindow.close();
+  }
 });
 
 app.on('window-all-closed', () => {

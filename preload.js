@@ -20,9 +20,12 @@ contextBridge.exposeInMainWorld('markpad', {
   onFileNew: (cb) => ipcRenderer.on('file-new', () => cb()),
   onRequestSave: (cb) => ipcRenderer.on('request-save', (e, data) => cb(data)),
   onToggleOutline: (cb) => ipcRenderer.on('toggle-outline', () => cb()),
+  onToggleSource: (cb) => ipcRenderer.on('toggle-source', () => cb()),
   onToggleTheme: (cb) => ipcRenderer.on('toggle-theme', () => cb()),
   onSetTheme: (cb) => ipcRenderer.on('set-theme', (e, mode) => cb(mode)),
   onRequestExportHtml: (cb) => ipcRenderer.on('request-export-html', () => cb()),
+  // 关闭前主进程问询
+  onConfirmClose: (cb) => ipcRenderer.on('confirm-close', () => cb()),
 
   // 渲染进程 -> 主进程
   saveContent: (content, saveAs) => ipcRenderer.invoke('save-content', { content, saveAs }),
@@ -36,5 +39,8 @@ contextBridge.exposeInMainWorld('markpad', {
     return p;
   },
   rendererReady: () => ipcRenderer.send('renderer-ready'),
-  setNativeTheme: (mode) => ipcRenderer.send('set-native-theme', mode)
+  setNativeTheme: (mode) => ipcRenderer.send('set-native-theme', mode),
+  // 关闭确认：渲染让主进程弹原生对话框，返回 'save'/'discard'/'cancel'
+  askCloseConfirm: () => ipcRenderer.invoke('ask-close-confirm'),
+  confirmCloseReply: (payload) => ipcRenderer.send('confirm-close-reply', payload)
 });

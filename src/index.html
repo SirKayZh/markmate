@@ -10,6 +10,13 @@
 <body>
   <!-- 顶部拖拽区（macOS 红绿灯下方留白） -->
   <div id="drag-bar">
+    <button id="source-toggle" type="button" title="切换源码面板（⌘E）" aria-label="切换源码面板">
+      <!-- 两个竖条图标：表示双栏 -->
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="8" height="16" rx="1.5"/>
+        <rect x="13" y="4" width="8" height="16" rx="1.5"/>
+      </svg>
+    </button>
     <button id="theme-toggle" type="button" title="切换主题（⌘/）" aria-label="切换主题">
       <!-- 单一图标：一个一半亮一半暗的圆，点击循环 亮 → 暗 → 跟随系统 -->
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -26,10 +33,19 @@
       <div id="outline-content"></div>
     </aside>
 
-    <!-- 编辑器 -->
+    <!-- 编辑器（中间：WYSIWYG 渲染区） -->
     <main id="editor-wrap">
       <div id="vditor"></div>
     </main>
+
+    <!-- 右侧源码面板（可收起） -->
+    <aside id="source-pane" class="hidden">
+      <div class="source-title">
+        <span>Markdown 源码</span>
+        <button id="source-close" type="button" title="收起" aria-label="收起源码面板">×</button>
+      </div>
+      <textarea id="source-editor" spellcheck="false" placeholder="Markdown 源码…"></textarea>
+    </aside>
   </div>
 
   <!-- 底部状态栏 -->

@@ -9,6 +9,20 @@
 
 ---
 
+## [1.4.0] - 2026-06-11
+
+### 新增 Added
+- **大纲点击跳转**：左侧大纲列表点击任一标题，中间编辑区平滑滚动到对应位置；当前项高亮显示。修复了之前 IR 模式下用 `textContent` 模糊匹配导致跳错位置的问题——改为按"第 i 个标题对应 DOM 里第 i 个 h 元素"的索引绑定，并给每个 h 标记 `id` 方便定位。
+- **三栏布局 / 源码同步面板**：右上角加了一个面板切换按钮（⌘E），打开后右侧出现「Markdown 源码」面板。中间是渲染好的 WYSIWYG 视图，右侧是纯文本 Markdown 源码——无论在哪一边修改都会**双向同步**到另一边。源码侧改动 220ms 节流后回写到 vditor，避免每个按键都重渲染；焦点切换时立即落地。
+- **关闭未保存提示**：点关闭按钮 / ⌘W / ⌘Q 时，如果当前文档有未保存改动，会弹出原生对话框「保存 / 不保存 / 取消」。选「保存」走标准保存流程（无路径时自动出另存为），保存成功才真正关闭；选「取消」窗口保持原状不丢内容。
+
+### 技术细节 Technical
+- `main.js`：拦截 `window.close`，脏状态下发 `confirm-close` 给渲染层走原生 dialog；新增 `ask-close-confirm` IPC handler；`before-quit` 兜底处理 ⌘Q。
+- `renderer.js`：新增 `syncSourceFromVditor` / `syncVditorFromSource` 双向同步，用 `syncingFromVditor`/`syncingFromSource` 标志位防回环；大纲改为按索引直跳，并给每个 h 标记 `data-mp-idx` + `id`。
+- `index.html` / `styles.css`：右侧 420px 源码面板（可收起 `.hidden` → `margin-right:-420px`），顶栏新增源码切换图标。
+
+---
+
 ## [1.3.0] - 2026-06-11
 
 ### 修复 Fixed
