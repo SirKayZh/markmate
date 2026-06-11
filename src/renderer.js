@@ -255,57 +255,79 @@ function scrollToHeadingByIndex(idx) {
   if (!target) {
     return;
   }
-  const scroller = getScrollContainerFromElement(target);
-  scrollElementInto(target, scroller);
+  // 关键：不再调 moveCaret/focus 触发 vditor 的 selectionchange——它会反向滚回光标原位，
+  // 造成"看上去没跳"。这里只做"纯滚动 + 高亮 + toast"三件事，最稳。
+  scrollHeadingIntoView(target);
   highlightOutlineItem(idx);
   flashHeading(target);
-  // 把光标移到目标标题，让随后的编辑就在这里发生（也提供"跳转生效"的视觉确认）
-  moveCaretTo(target);
+  showJumpToast(target);
 }
 
-// 让目标标题短暂闪烁一下，给用户视觉反馈
+// 让目标标题短暂闪烁一下，给用户视觉反馈（动画时长延长到 1.6s 更显眼）
 function flashHeading(el) {
   if (!el) return;
   el.classList.remove('mp-heading-flash'); // 重置动画
   // 强制 reflow 才能重新触发动画
   void el.offsetWidth;
   el.classList.add('mp-heading-flash');
-  setTimeout(() => el.classList.remove('mp-heading-flash'), 1200);
+  setTimeout(() => el.classList.remove('mp-heading-flash'), 1700);
 }
 
-// 把光标定位到指定标题元素的开头（IR 模式下 h 是 contenteditable 的）
-function moveCaretTo(el) {
-  if (!el) return;
+// 滚动到目标标题：从近到远把所有"可滚动祖先"都对齐一次，
+// 双保险——不管 vditor 的层级如何嵌套，至少有一层会真正动起来。
+function scrollHeadingIntoView(target) {
+  if (!target) return;
+  const scrollers = collectScrollableAncestors(target);
+  // 用 instant（瞬时）跳，比 smooth 更明确——用户能立刻感知"跳了"
+  // 顶部留 16px 余量，避免标题贴边
+  for (const sc of scrollers) {
+    const tRect = target.getBoundingClientRect();
+    const sRect = sc.getBoundingClientRect();
+    // 已经在容器顶部附近 16~80px，就别动这层（避免反复抖动）
+    const distance = tRect.top - sRect.top;
+    if (distance >= 0 && distance <= 80) continue;
+    const next = sc.scrollTop + distance - 16;
+    sc.scrollTop = Math.max(0, next);
+  }
+  // 兜底：浏览器原生 scrollIntoView 还会确保最终在视口内
   try {
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    range.collapse(true); // 起点
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    // 让编辑器拿到焦点，避免点了大纲焦点还在大纲上
-    el.focus && el.focus({ preventScroll: true });
-  } catch (e) {
-    // 忽略：某些状态下 selection 操作可能失败，但滚动已经发生过
-  }
+    target.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+  } catch (_) {}
 }
 
-function scrollElementInto(target, scroller) {
-  if (!target || !scroller) return;
-  if (scroller === document.scrollingElement || scroller === document.documentElement || scroller === document.body) {
-    // 整页滚动
-    const top = target.getBoundingClientRect().top + window.scrollY - 16;
-    window.scrollTo({ top, behavior: 'smooth' });
-    return;
+// 收集 target 到 document 之间所有真正可滚动的祖先（按从近到远）
+function collectScrollableAncestors(el) {
+  const out = [];
+  let p = el && el.parentElement;
+  while (p && p !== document.body && p !== document.documentElement) {
+    const style = getComputedStyle(p);
+    const oy = style.overflowY;
+    if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && p.scrollHeight > p.clientHeight + 1) {
+      out.push(p);
+    }
+    p = p.parentElement;
   }
-  const targetRect = target.getBoundingClientRect();
-  const scrollerRect = scroller.getBoundingClientRect();
-  const top = targetRect.top - scrollerRect.top + scroller.scrollTop - 12;
-  if (typeof scroller.scrollTo === 'function') {
-    scroller.scrollTo({ top, behavior: 'smooth' });
-  } else {
-    scroller.scrollTop = top;
+  return out;
+}
+
+// 顶部 toast：跳转后 1.4s 内显示"已跳到 ## 标题文本"，给用户最强的视觉确认
+let jumpToastEl = null;
+let jumpToastTimer = null;
+function showJumpToast(target) {
+  const txt = (target.textContent || '').replace(/[#]/g, '').trim().slice(0, 40);
+  if (!jumpToastEl) {
+    jumpToastEl = document.createElement('div');
+    jumpToastEl.id = 'mp-jump-toast';
+    document.body.appendChild(jumpToastEl);
   }
+  jumpToastEl.textContent = '已跳转到：' + txt;
+  jumpToastEl.classList.remove('show');
+  void jumpToastEl.offsetWidth; // reflow
+  jumpToastEl.classList.add('show');
+  clearTimeout(jumpToastTimer);
+  jumpToastTimer = setTimeout(() => {
+    jumpToastEl && jumpToastEl.classList.remove('show');
+  }, 1400);
 }
 
 function highlightOutlineItem(idx) {

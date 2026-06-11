@@ -9,6 +9,21 @@
 
 ---
 
+## [1.4.2] - 2026-06-12
+
+### 修复 Fixed
+- **大纲点击跳转，这次真的彻底搞定**：v1.4.1 CDP 真机验证滚动确实发生（`pre.vditor-reset.scrollTop` 数值正确变化），但用户主观仍感觉"没跳"。复盘定位到两个真正根因：
+  1. v1.4.1 调了 `moveCaretTo`（`Selection.removeAllRanges + addRange`）想把光标移到目标——这反而触发 vditor IR 模式自带的 `selectionchange` 处理，**vditor 立刻把视口拉回光标位置**，跟我们的滚动反向打架。
+  2. smooth 动画 + 默认欢迎文档段间距不大，整个滚动看上去"只挪了一点点"，很难感知。
+- 1.4.2 的方案：① **彻底不再操作 selection/focus**——只做"滚动 + 高亮 + toast"三件事，避开 vditor 内部干扰；② 滚动改用 instant（瞬时）+ 自动收集所有可滚动祖先逐个对齐，外加 `scrollIntoView` 兜底；③ flash 高亮加强（背景透明度 0.55 + 6px 蓝色光晕，时长延长到 1.6s）；④ **新增顶部 toast**：每次点击大纲都会在屏幕顶部居中弹出"已跳转到：xxx"提示，1.4s 后淡出——用户**绝对不会感知不到**跳转。
+
+### 技术细节 Technical
+- `renderer.js`：删除 `moveCaretTo` / `getScrollContainerFromElement` / `scrollElementInto`；新增 `scrollHeadingIntoView` / `collectScrollableAncestors` / `showJumpToast`。
+- `styles.css`：增强 `@keyframes mp-heading-flash-kf`（更高对比度 + 光晕），新增 `#mp-jump-toast` 样式。
+- 验证：CDP 自动化脚本逐个点击 6 个大纲项，每次 `toastShown=true / hasFlash=true / scrollTop` 数值正确递增。
+
+---
+
 ## [1.4.1] - 2026-06-12
 
 ### 修复 Fixed

@@ -154,13 +154,44 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
 
 /* 大纲跳转后短暂闪烁目标标题，给用户视觉反馈 */
 @keyframes mp-heading-flash-kf {
-  0%   { background-color: rgba(76, 139, 245, 0.0); }
-  20%  { background-color: rgba(76, 139, 245, 0.28); }
-  100% { background-color: rgba(76, 139, 245, 0.0); }
+  0%   { background-color: rgba(76, 139, 245, 0.0);  box-shadow: 0 0 0 0   rgba(76, 139, 245, 0.0); }
+  15%  { background-color: rgba(76, 139, 245, 0.55); box-shadow: 0 0 0 6px rgba(76, 139, 245, 0.25); }
+  60%  { background-color: rgba(76, 139, 245, 0.30); box-shadow: 0 0 0 4px rgba(76, 139, 245, 0.10); }
+  100% { background-color: rgba(76, 139, 245, 0.0);  box-shadow: 0 0 0 0   rgba(76, 139, 245, 0.0); }
 }
 .mp-heading-flash {
-  animation: mp-heading-flash-kf 1.1s ease-out;
-  border-radius: 4px;
+  animation: mp-heading-flash-kf 1.6s ease-out;
+  border-radius: 6px;
+  /* 让动画期间标题在视觉上"突出来"，不会被周围内容盖过 */
+  position: relative;
+  z-index: 2;
+}
+
+/* 跳转 toast：顶部居中，淡入淡出 */
+#mp-jump-toast {
+  position: fixed;
+  top: 56px;
+  left: 50%;
+  transform: translate(-50%, -8px);
+  padding: 8px 16px;
+  background: rgba(76, 139, 245, 0.95);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 18px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.22s ease;
+  white-space: nowrap;
+  max-width: 80vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#mp-jump-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* 右侧源码面板 */
