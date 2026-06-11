@@ -3,7 +3,7 @@ let vditor = null;
 let vditorReady = false;
 let pendingValue = null;
 let isDirty = false;
-let outlineVisible = false;
+let outlineVisible = true;
 let sourceVisible = false;
 // 源码↔渲染双向同步时用来抑制回环
 let syncingFromVditor = false;

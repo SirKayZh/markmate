@@ -9,6 +9,19 @@
 
 ---
 
+## [1.4.4] - 2026-06-12
+
+### 修复 Fixed
+- **大纲侧栏默认可见**：v1.4.3 大纲面板初始 `class="hidden"`，用户需要 ⌘\ 才能看到——但 toggle 状态可能跟 DOM 不同步，导致"大纲消失了"。现在改为大纲默认展开可见（`outlineVisible = true`，HTML 去掉了 `class="hidden"`），用户如果不想要可以 ⌘\ 收起。
+- **vditor outline 样式加固**：给 `#outline-content .vditor-outline` 的 `position/left/width` 等全部加 `!important`，彻底防止 vditor 自身 CSS 的绝对定位覆盖。
+
+### 技术细节 Technical
+- `index.html`：`<aside id="outline">` 不再带 `class="hidden"`
+- `renderer.js`：`outlineVisible` 初始值 `false → true`
+- `styles.css`：`#outline-content .vditor-outline` 加了 `position: static !important` 等全覆盖
+
+---
+
 ## [1.4.3] - 2026-06-12
 
 ### 修复 Fixed

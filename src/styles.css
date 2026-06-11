@@ -109,11 +109,17 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
 /* vditor 自带 outline 的样式适配（我们自己搬进来，不自己渲染） */
 #outline-content .vditor-outline {
   background: transparent;
-  padding: 0;
-  height: auto;
-  overflow: visible;
-  border: none;
-  position: static;
+  padding: 0 !important;
+  height: auto !important;
+  overflow: visible !important;
+  border: none !important;
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  width: auto !important;
+  max-height: none !important;
 }
 
 /* 隐藏 vditor 默认的"大纲"标题，我们有 .outline-title */
