@@ -8,6 +8,8 @@
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
+**English** · [简体中文](README.zh-CN.md)
+
 <p align="center">
   <img src="build/preview-icon.png" width="128" alt="MarkPad icon">
 </p>
@@ -17,7 +19,9 @@
 - **WYSIWYG editing** — type Markdown and see it rendered instantly (IR mode, just like Typora)
 - **Rich content** — headings, bold/italic, lists, blockquotes, tables, code highlighting, KaTeX math, task lists
 - **Outline navigation** — togglable sidebar (⌘\), click to jump to any heading
-- **Light / Dark theme** — switch instantly (⌘/)
+- **Drag & drop to open** — drag a `.md` file onto the window or Dock icon to open it (even when the app isn't running yet)
+- **Open with MarkPad** — registered as a handler for `.md` / `.markdown` / `.mdown` / `.mkd` / `.mdtext` / `.txt`; can be set as the default editor in Finder
+- **Theme: Light / Dark / Follow System** — pick from the View → Theme menu; choice is remembered across launches and follows the system appearance in real time (⌘/ cycles through modes)
 - **File operations** — New ⌘N · Open ⌘O · Save ⌘S · Save As ⌘⇧S
 - **Export to HTML** — File → Export HTML
 - **Native macOS feel** — inset traffic lights, document dirty indicator, recent files, word count in the status bar
@@ -26,8 +30,8 @@
 
 Download the latest `.dmg` from the [Releases](https://github.com/SirKayZh/markpad/releases) page:
 
-- Apple Silicon (M1/M2/M3…): `MarkPad-1.0.0-arm64.dmg`
-- Intel: `MarkPad-1.0.0-x64.dmg`
+- Apple Silicon (M1/M2/M3…): `MarkPad-1.1.0-arm64.dmg`
+- Intel: `MarkPad-1.1.0-x64.dmg`
 
 > The app is **not code-signed/notarized**. On first launch, right-click the app → **Open**, or run:
 > ```bash
@@ -65,7 +69,7 @@ npm run dist        # produces .app under release/
 | Save | ⌘S |
 | Save As | ⌘⇧S |
 | Toggle outline | ⌘\ |
-| Toggle theme | ⌘/ |
+| Toggle theme (Light → Dark → System) | ⌘/ |
 
 ## 🧱 Tech Stack
 
