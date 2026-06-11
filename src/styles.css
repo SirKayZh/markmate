@@ -1,0 +1,127 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f7f8;
+  --text: #2c2c2e;
+  --border: #e8e8ea;
+  --accent: #4c8bf5;
+  --status-bg: #fafafa;
+  --status-text: #8a8a8e;
+}
+
+body.dark {
+  --bg: #1e1e1e;
+  --bg-soft: #252526;
+  --text: #d4d4d4;
+  --border: #333335;
+  --accent: #5a9bff;
+  --status-bg: #1a1a1a;
+  --status-text: #777;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* 顶部拖拽条：让窗口可以从这块区域拖动 */
+#drag-bar {
+  height: 28px;
+  width: 100%;
+  -webkit-app-region: drag;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+#app {
+  display: flex;
+  height: calc(100vh - 28px - 26px); /* 减去拖拽条与状态栏 */
+  overflow: hidden;
+}
+
+/* 大纲侧栏 */
+#outline {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-soft);
+  overflow-y: auto;
+  padding: 12px 0;
+  transition: margin-left 0.18s ease;
+}
+
+#outline.hidden {
+  margin-left: -240px;
+}
+
+.outline-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--status-text);
+  padding: 0 16px 8px;
+  letter-spacing: 0.5px;
+}
+
+#outline-content .vditor-outline__item {
+  padding: 4px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#outline-content .vditor-outline__item:hover {
+  background: rgba(76, 139, 245, 0.12);
+}
+
+/* 编辑器区域 */
+#editor-wrap {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+#vditor {
+  flex: 1;
+  border: none !important;
+}
+
+/* 去掉 vditor 默认边框，让它更像 Typora */
+.vditor {
+  border: none !important;
+}
+
+.vditor-reset {
+  padding: 20px max(40px, calc((100% - 800px) / 2)) 80px !important;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+/* 状态栏 */
+#statusbar {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  font-size: 12px;
+  background: var(--status-bg);
+  color: var(--status-text);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+#statusbar span { -webkit-app-region: no-drag; }
+
+.spacer { flex: 1; }

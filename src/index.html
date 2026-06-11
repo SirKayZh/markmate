@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarkPad</title>
+  <link rel="stylesheet" href="../node_modules/vditor/dist/index.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 顶部拖拽区（macOS 红绿灯下方留白） -->
+  <div id="drag-bar"></div>
+
+  <div id="app">
+    <!-- 大纲侧栏 -->
+    <aside id="outline" class="hidden">
+      <div class="outline-title">大纲</div>
+      <div id="outline-content"></div>
+    </aside>
+
+    <!-- 编辑器 -->
+    <main id="editor-wrap">
+      <div id="vditor"></div>
+    </main>
+  </div>
+
+  <!-- 底部状态栏 -->
+  <footer id="statusbar">
+    <span id="status-file">未命名</span>
+    <span class="spacer"></span>
+    <span id="status-words">0 字</span>
+    <span id="status-cursor">行 1, 列 1</span>
+  </footer>
+
+  <script src="../node_modules/vditor/dist/index.min.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
