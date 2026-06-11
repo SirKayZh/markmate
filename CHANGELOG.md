@@ -9,6 +9,29 @@
 
 ---
 
+## [1.4.3] - 2026-06-12
+
+### 修复 Fixed
+- **大纲跳转——换方案，彻底搞定**：v1.0.1~v1.4.2 三版全没修好，因为一直在跟 vditor 的内部滚动机制打架。这次 CDP 深入 debug 找到**真正的根本原因**：
+  - `vditor.vditor.element`（即 `#vditor` DIV）的 `overflow: visible` 且 `scrollHeight == clientHeight`（均为 706）——**根本不可滚动**。
+  - vditor 自己的 outline click handler 往这个不可滚动的元素设 `scrollTop`——等于写进黑洞，**连 vditor 原生的跳转在这套布局下都不生效**。
+  - 真正可滚动的容器是 `pre.vditor-reset`（scrollHeight=1712, clientHeight=705, overflow-y:auto），但 vditor 没去滚它。
+
+- **1.4.3 改用全新方案**：不再自己渲染大纲、不再自己算滚动位置。改为：
+  1. vditor 负责渲染大纲（用 `outline: { enable: true }`），它在每个 `<span>` 上挂了正确的 `data-target-id`，跟编辑器内的 h 元素（带 `id`）一一对应。
+  2. 我们在 `after` 回调里把 vditor 生成的 `.vditor-outline` DOM **搬进**自己的 `#outline-content` 侧边栏。
+  3. 在 `#outline-content` 上挂 capture 阶段的 click 委托：拦截对 `[data-target-id]` 的点击 → `e.preventDefault()` 阻止 vditor 无效的 scrollTop 操作 → `document.getElementById(targetId).scrollIntoView({ block:'start' })` —— **浏览器原生 API 不管嵌套多深都能找到正确滚动容器**。
+  4. Toast + flash 高亮保留。
+
+- 删除了**全部**自己写的死代码：`parsedHeadings`, `refreshOutline`, `slugify`, `tagHeadingsInDom`, `getEditorHeadings`, `getScrollContainerFromElement`, `scrollToHeadingByIndex`, `scrollHeadingIntoView`, `collectScrollableAncestors`, `moveCaretTo`, `escapeHtml` ——约 200 行定制逻辑全部替换为 15 行 `moveVditorOutline` + 委托 listener。
+
+### 技术细节 Technical
+- `renderer.js`：新增 `moveVditorOutline()`（在 `after`/`input` 回调中调用，把 vditor outline 搬进侧边栏）；`#outline-content` 上挂 capture click 委托 listener 拦截 `[data-target-id]` 点击。
+- `styles.css`：新增 vditor 自带 outline 在侧边栏内的样式适配（`.vditor-outline__content ul/li`, `[data-target-id]` 等）。
+- CDP 验证：6 个标题逐个点击，`scrollTop` 全部正确递增（44→157→396→658→1006），toast/flash 全部触发。
+
+---
+
 ## [1.4.2] - 2026-06-12
 
 ### 修复 Fixed

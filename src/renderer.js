@@ -80,19 +80,15 @@ $$\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}$$
 `;
 
 function loadContent(value) {
-  // 实例已就绪时，直接 setValue（Vditor 会正确重渲染 DOM）；
-  // 避免 destroy + new 的异步竞态导致内容拿得到却渲染不出来。
   if (vditor && vditorReady) {
     syncingFromSource = true;
     vditor.setValue(value || '');
     syncingFromSource = false;
     markDirty(false);
     updateStats();
-    refreshOutline();
     syncSourceFromVditor(true);
     return;
   }
-  // 实例尚未就绪：记下待加载内容，等 after 回调里再 setValue
   pendingValue = value || '';
   if (!vditor) initVditor(pendingValue);
 }
@@ -104,11 +100,11 @@ function initVditor(value) {
   }
   vditorReady = false;
   vditor = new Vditor('vditor', {
-    mode: 'ir', // 即时渲染 = Typora 体验
+    mode: 'ir',
     value: value || '',
     theme: darkMode ? 'dark' : 'classic',
     cache: { enable: false },
-    toolbar: [], // 隐藏工具栏，纯净写作
+    toolbar: [],
     counter: { enable: false },
     preview: {
       theme: { current: darkMode ? 'dark' : 'light' },
@@ -118,17 +114,15 @@ function initVditor(value) {
     outline: { enable: true, position: 'left' },
     placeholder: '开始输入…',
     input: () => {
-      // 用户在中间渲染区编辑：标脏 + 刷新大纲 + 同步到右侧源码
       if (!syncingFromSource) {
         markDirty(true);
         updateStats();
-        refreshOutline();
         syncSourceFromVditor();
+        moveVditorOutline();
       }
     },
     after: () => {
       vditorReady = true;
-      // 若有挂起的待加载内容（实例初始化期间收到的打开请求），此时写入
       if (pendingValue !== null) {
         syncingFromSource = true;
         vditor.setValue(pendingValue);
@@ -137,12 +131,104 @@ function initVditor(value) {
         markDirty(false);
       }
       updateStats();
-      refreshOutline();
       applyEditorTheme();
       syncSourceFromVditor(true);
+      moveVditorOutline();
     }
   });
 }
+
+// ========= 大纲：使用 vditor 自带 outline，只把它搬进我们的侧边栏 =========
+
+function moveVditorOutline() {
+  const container = document.getElementById('outline-content');
+  if (!container) return;
+  // 如果已经在容器里了就不动
+  if (container.querySelector('.vditor-outline')) return;
+
+  // 找到 vditor 生成的 outline DOM（在 .vditor-content 里）
+  const vdOutline = document.querySelector('.vditor-outline');
+  if (!vdOutline) return;
+
+  // 搬进我们的侧边栏
+  container.innerHTML = '';
+  container.appendChild(vdOutline);
+
+  // vditor 的默认标题（"大纲"）我们用自己的 .outline-title 替代，隐藏它的
+  const titleEl = vdOutline.querySelector('.vditor-outline__title');
+  if (titleEl) titleEl.style.display = 'none';
+}
+
+// 委托点击：拦截 vditor outline 的点击，用我们自己的滚动
+document.getElementById('outline-content').addEventListener('click', (e) => {
+  const span = e.target.closest('[data-target-id]');
+  if (!span) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const targetId = span.getAttribute('data-target-id');
+  const heading = document.getElementById(targetId);
+  if (!heading) return;
+
+  // 核心：浏览器原生 scrollIntoView —— 不管滚动容器嵌套多深都对
+  try {
+    heading.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+  } catch (_) {}
+
+  // Toast 反馈（顶部居中提示，用户绝不可能看不到）
+  showJumpToast(span);
+
+  // 闪烁高亮目标标题
+  flashHeading(heading);
+
+  // 高亮当前大纲项
+  document.querySelectorAll('#outline-content [data-target-id]').forEach(s => {
+    s.style.background = '';
+    s.style.borderRadius = '';
+  });
+  span.style.background = 'rgba(76, 139, 245, 0.20)';
+  span.style.borderRadius = '4px';
+}, true); // capture 阶段拦截，比 vditor 自己的 handler 先跑
+
+// Toast 提示
+let jumpToastEl = null;
+let jumpToastTimer = null;
+function showJumpToast(span) {
+  const txt = (span.textContent || '').trim().slice(0, 40);
+  if (!jumpToastEl) {
+    jumpToastEl = document.createElement('div');
+    jumpToastEl.id = 'mp-jump-toast';
+    document.body.appendChild(jumpToastEl);
+  }
+  jumpToastEl.textContent = '已跳转到：' + txt;
+  jumpToastEl.classList.remove('show');
+  void jumpToastEl.offsetWidth;
+  jumpToastEl.classList.add('show');
+  clearTimeout(jumpToastTimer);
+  jumpToastTimer = setTimeout(() => {
+    jumpToastEl && jumpToastEl.classList.remove('show');
+  }, 1400);
+}
+
+// 闪烁高亮
+function flashHeading(el) {
+  if (!el) return;
+  el.classList.remove('mp-heading-flash');
+  void el.offsetWidth;
+  el.classList.add('mp-heading-flash');
+  setTimeout(() => el.classList.remove('mp-heading-flash'), 1700);
+}
+
+// ========= 大纲折叠/展开 =========
+
+function toggleOutline() {
+  outlineVisible = !outlineVisible;
+  outlineEl.classList.toggle('hidden', !outlineVisible);
+  if (outlineVisible) moveVditorOutline();
+}
+
+// ========= 源码面板 ↔ 渲染编辑器 双向同步 =========
 
 function markDirty(dirty) {
   isDirty = dirty;
@@ -152,199 +238,15 @@ function markDirty(dirty) {
 function updateStats() {
   if (!vditor) return;
   const text = vditor.getValue() || '';
-  // 中文按字符，英文按单词粗略统计
   const cn = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
   const en = (text.match(/[a-zA-Z]+/g) || []).length;
   statusWords.textContent = `${cn + en} 字`;
 }
 
-// ========= 大纲：从内容解析标题 → 与 DOM 中真实 h 元素按顺序绑定 =========
-let parsedHeadings = []; // [{level, text, slug}]
-
-function slugify(text) {
-  // 用文本+顺序生成稳定 id；GitHub 风格 slug 不一定够稳定，这里用顺序保险
-  return 'mp-h-' + text.toLowerCase()
-    .replace(/[#*`~_>]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/[^\w\u4e00-\u9fa5\-]/g, '')
-    .slice(0, 60);
-}
-
-function refreshOutline() {
-  if (!vditor) return;
-  const value = vditor.getValue() || '';
-  const lines = value.split('\n');
-  const headings = [];
-  let inCode = false;
-  lines.forEach((line) => {
-    if (line.trim().startsWith('```')) { inCode = !inCode; return; }
-    if (inCode) return;
-    const m = line.match(/^(#{1,6})\s+(.+)/);
-    if (m) {
-      const text = m[2].replace(/[#*`]/g, '').trim();
-      headings.push({ level: m[1].length, text, slug: slugify(text) });
-    }
-  });
-  parsedHeadings = headings;
-
-  // 给编辑器里真实 h 元素挂 id，方便 scrollIntoView
-  tagHeadingsInDom();
-
-  const container = document.getElementById('outline-content');
-  if (!headings.length) {
-    container.innerHTML = '<div style="padding:8px 16px;font-size:12px;color:var(--status-text)">暂无标题</div>';
-    return;
-  }
-  container.innerHTML = headings.map((h, i) =>
-    `<div class="vditor-outline__item" style="padding-left:${16 + (h.level - 1) * 12}px" data-idx="${i}">${escapeHtml(h.text)}</div>`
-  ).join('');
-  // 点击跳转：按"第 i 个标题"对应到 DOM 里的第 i 个 h
-  container.querySelectorAll('.vditor-outline__item').forEach((el, i) => {
-    el.onclick = () => scrollToHeadingByIndex(i);
-  });
-}
-
-// Vditor IR 模式：实际可滚动的容器是 pre.vditor-reset（高度100%且内容超长产生滚动）
-// 但保险起见，沿着 h 元素往上查最近一个实际有滚动的祖先
-function getScrollContainerFromElement(el) {
-  let p = el && el.parentElement;
-  while (p && p !== document.body) {
-    const style = getComputedStyle(p);
-    const oy = style.overflowY;
-    if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && p.scrollHeight > p.clientHeight + 1) {
-      return p;
-    }
-    p = p.parentElement;
-  }
-  // fallback
-  return document.querySelector('.vditor-ir pre.vditor-reset')
-      || document.querySelector('pre.vditor-reset')
-      || document.querySelector('.vditor-ir')
-      || document.scrollingElement;
-}
-
-function getEditorHeadings() {
-  // IR 模式下，h 元素挂在 .vditor-ir 的内容区（pre.vditor-reset）里；
-  // 直接从 .vditor 根开始 query 所有 h1~h6，保证按文档顺序返回
-  const root = document.querySelector('.vditor-ir')
-            || document.querySelector('.vditor')
-            || document.getElementById('vditor');
-  if (!root) return [];
-  return Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'));
-}
-
-function tagHeadingsInDom() {
-  const hs = getEditorHeadings();
-  hs.forEach((h, i) => {
-    h.dataset.mpIdx = String(i);
-  });
-}
-
-function scrollToHeadingByIndex(idx) {
-  // 即时取 DOM，vditor 重渲染后旧引用都会失效
-  const hs = getEditorHeadings();
-  let target = hs[idx];
-  if (!target) {
-    // fallback：用文本匹配
-    const heading = parsedHeadings[idx];
-    if (heading) {
-      const norm = (s) => (s || '').replace(/[#\s]/g, '');
-      target = hs.find((el) => norm(el.textContent).includes(norm(heading.text)));
-    }
-  }
-  if (!target) {
-    return;
-  }
-  // 关键：不再调 moveCaret/focus 触发 vditor 的 selectionchange——它会反向滚回光标原位，
-  // 造成"看上去没跳"。这里只做"纯滚动 + 高亮 + toast"三件事，最稳。
-  scrollHeadingIntoView(target);
-  highlightOutlineItem(idx);
-  flashHeading(target);
-  showJumpToast(target);
-}
-
-// 让目标标题短暂闪烁一下，给用户视觉反馈（动画时长延长到 1.6s 更显眼）
-function flashHeading(el) {
-  if (!el) return;
-  el.classList.remove('mp-heading-flash'); // 重置动画
-  // 强制 reflow 才能重新触发动画
-  void el.offsetWidth;
-  el.classList.add('mp-heading-flash');
-  setTimeout(() => el.classList.remove('mp-heading-flash'), 1700);
-}
-
-// 滚动到目标标题：从近到远把所有"可滚动祖先"都对齐一次，
-// 双保险——不管 vditor 的层级如何嵌套，至少有一层会真正动起来。
-function scrollHeadingIntoView(target) {
-  if (!target) return;
-  const scrollers = collectScrollableAncestors(target);
-  // 用 instant（瞬时）跳，比 smooth 更明确——用户能立刻感知"跳了"
-  // 顶部留 16px 余量，避免标题贴边
-  for (const sc of scrollers) {
-    const tRect = target.getBoundingClientRect();
-    const sRect = sc.getBoundingClientRect();
-    // 已经在容器顶部附近 16~80px，就别动这层（避免反复抖动）
-    const distance = tRect.top - sRect.top;
-    if (distance >= 0 && distance <= 80) continue;
-    const next = sc.scrollTop + distance - 16;
-    sc.scrollTop = Math.max(0, next);
-  }
-  // 兜底：浏览器原生 scrollIntoView 还会确保最终在视口内
-  try {
-    target.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
-  } catch (_) {}
-}
-
-// 收集 target 到 document 之间所有真正可滚动的祖先（按从近到远）
-function collectScrollableAncestors(el) {
-  const out = [];
-  let p = el && el.parentElement;
-  while (p && p !== document.body && p !== document.documentElement) {
-    const style = getComputedStyle(p);
-    const oy = style.overflowY;
-    if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && p.scrollHeight > p.clientHeight + 1) {
-      out.push(p);
-    }
-    p = p.parentElement;
-  }
-  return out;
-}
-
-// 顶部 toast：跳转后 1.4s 内显示"已跳到 ## 标题文本"，给用户最强的视觉确认
-let jumpToastEl = null;
-let jumpToastTimer = null;
-function showJumpToast(target) {
-  const txt = (target.textContent || '').replace(/[#]/g, '').trim().slice(0, 40);
-  if (!jumpToastEl) {
-    jumpToastEl = document.createElement('div');
-    jumpToastEl.id = 'mp-jump-toast';
-    document.body.appendChild(jumpToastEl);
-  }
-  jumpToastEl.textContent = '已跳转到：' + txt;
-  jumpToastEl.classList.remove('show');
-  void jumpToastEl.offsetWidth; // reflow
-  jumpToastEl.classList.add('show');
-  clearTimeout(jumpToastTimer);
-  jumpToastTimer = setTimeout(() => {
-    jumpToastEl && jumpToastEl.classList.remove('show');
-  }, 1400);
-}
-
-function highlightOutlineItem(idx) {
-  document.querySelectorAll('#outline-content .vditor-outline__item').forEach((el, i) => {
-    el.classList.toggle('active', i === idx);
-  });
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-// ========= 源码面板 ↔ 渲染编辑器 双向同步 =========
 function syncSourceFromVditor(immediate) {
   if (!vditor || !vditorReady) return;
   if (syncingFromSource) return;
-  if (sourceEditor.matches(':focus')) return; // 用户正在编辑源码，不要被覆盖
+  if (sourceEditor.matches(':focus')) return;
   const val = vditor.getValue() || '';
   if (sourceEditor.value === val) return;
   syncingFromVditor = true;
@@ -358,18 +260,14 @@ function syncVditorFromSource() {
   const val = sourceEditor.value;
   if ((vditor.getValue() || '') === val) return;
   syncingFromSource = true;
-  // 记录光标在源码里的相对位置（行号）以便不被打断
   vditor.setValue(val);
   syncingFromSource = false;
   markDirty(true);
   updateStats();
-  refreshOutline();
 }
 
-// 源码侧输入：节流同步到 vditor，避免每个按键都重渲染
 sourceEditor.addEventListener('input', () => {
   if (syncingFromVditor) return;
-  // 标脏立即生效
   markDirty(true);
   clearTimeout(sourceSyncTimer);
   sourceSyncTimer = setTimeout(() => {
@@ -377,20 +275,19 @@ sourceEditor.addEventListener('input', () => {
   }, 220);
 });
 
-// 失焦时立即同步一次（避免长时间 pending）
 sourceEditor.addEventListener('blur', () => {
   clearTimeout(sourceSyncTimer);
   syncVditorFromSource();
 });
 
+// ========= 主题 =========
+
 function applyEditorTheme() {
   document.body.classList.toggle('dark', darkMode);
-  // 同步右上角主题按钮的图标与提示
   document.body.setAttribute('data-theme-mode', themeMode);
   if (typeof updateThemeBtnTitle === 'function') updateThemeBtnTitle();
 }
 
-// 应用主题模式：重新计算暗色、刷新编辑器与原生外观，并持久化
 function applyThemeMode(persist = true) {
   darkMode = computeDark();
   applyEditorTheme();
@@ -401,7 +298,6 @@ function applyThemeMode(persist = true) {
       darkMode ? 'native' : 'github'
     );
   }
-  // 同步原生主题（影响窗口标题栏/滚动条等）
   window.markpad.setNativeTheme(themeMode);
   if (persist) localStorage.setItem('markpad-theme', themeMode);
 }
@@ -412,11 +308,15 @@ function setTheme(mode) {
   applyThemeMode();
 }
 
-function toggleOutline() {
-  outlineVisible = !outlineVisible;
-  outlineEl.classList.toggle('hidden', !outlineVisible);
-  if (outlineVisible) refreshOutline();
+function toggleTheme() {
+  const order = ['light', 'dark', 'system'];
+  const next = order[(order.indexOf(themeMode) + 1) % order.length];
+  setTheme(next);
 }
+
+systemDark.addEventListener('change', () => {
+  if (themeMode === 'system') applyThemeMode(false);
+});
 
 function toggleSource() {
   sourceVisible = !sourceVisible;
@@ -426,19 +326,8 @@ function toggleSource() {
   if (sourceVisible) syncSourceFromVditor(true);
 }
 
-// ⌘/ 快捷键：在 亮 → 暗 → 跟随系统 之间循环
-function toggleTheme() {
-  const order = ['light', 'dark', 'system'];
-  const next = order[(order.indexOf(themeMode) + 1) % order.length];
-  setTheme(next);
-}
-
-// 跟随系统模式下，监听系统亮/暗变化实时切换
-systemDark.addEventListener('change', () => {
-  if (themeMode === 'system') applyThemeMode(false);
-});
-
 // ============ IPC 事件绑定 ============
+
 window.markpad.onFileOpened(({ path, content }) => {
   loadContent(content);
   statusFile.textContent = path.split('/').pop();
@@ -472,13 +361,11 @@ window.markpad.onToggleSource(() => toggleSource());
 window.markpad.onToggleTheme(() => toggleTheme());
 window.markpad.onSetTheme((mode) => setTheme(mode));
 
-// 关闭窗口前主进程问询：当前是否脏 + 同步保存
 window.markpad.onConfirmClose(async () => {
   if (!isDirty) {
     window.markpad.confirmCloseReply({ action: 'discard' });
     return;
   }
-  // 由主进程弹原生对话框，渲染进程只负责按命令保存
   const action = await window.markpad.askCloseConfirm();
   if (action === 'cancel') {
     window.markpad.confirmCloseReply({ action: 'cancel' });
@@ -488,7 +375,6 @@ window.markpad.onConfirmClose(async () => {
     window.markpad.confirmCloseReply({ action: 'discard' });
     return;
   }
-  // save
   const content = vditor ? vditor.getValue() : '';
   const res = await window.markpad.saveContent(content, false);
   if (res.saved) {
@@ -496,12 +382,11 @@ window.markpad.onConfirmClose(async () => {
     if (res.path) statusFile.textContent = res.path.split('/').pop();
     window.markpad.confirmCloseReply({ action: 'discard' });
   } else {
-    // 用户在保存对话框里取消了 → 把"关闭"也取消，避免误丢
     window.markpad.confirmCloseReply({ action: 'cancel' });
   }
 });
 
-// 右上角主题切换按钮：点击循环 亮 → 暗 → 跟随系统
+// 右上角主题切换按钮
 const themeToggleBtn = document.getElementById('theme-toggle');
 function updateThemeBtnTitle() {
   if (!themeToggleBtn) return;
@@ -533,12 +418,9 @@ if (sourceCloseBtn) {
 }
 
 // ============ 窗口内拖拽打开文件 ============
-// 阻止默认行为（否则 Electron 会用文件替换整个页面），改为读取路径交给主进程打开。
-// 用 capture 阶段在窗口最外层抢先处理，避免被 Vditor 等内部组件的 drop 监听吞掉。
 function isFileDrag(e) {
   const types = e.dataTransfer && e.dataTransfer.types;
   if (!types) return false;
-  // DataTransferItemList 既可能是数组也可能是 DOMStringList，统一遍历
   for (let i = 0; i < types.length; i++) {
     if (types[i] === 'Files') return true;
   }
@@ -556,7 +438,6 @@ window.addEventListener('dragleave', (e) => {
   if (!isFileDrag(e)) return;
   e.preventDefault();
   e.stopPropagation();
-  // 只有真正离开窗口才清除高亮
   if (e.target === document.documentElement || !e.relatedTarget) {
     document.body.classList.remove('drag-over');
   }
@@ -568,22 +449,19 @@ window.addEventListener('drop', (e) => {
   e.stopPropagation();
   document.body.classList.remove('drag-over');
   const files = Array.from(e.dataTransfer.files || []);
-  // 优先 markdown/文本文件
   const f = files.find((x) => /\.(md|markdown|mdown|mkd|mdtext|txt)$/i.test(x.name)) || files[0];
   if (!f) return;
-  // Electron 32+ 已移除 File.path，统一走 preload 里的 webUtils 解析
   const p = window.markpad.openDroppedFileFromFile(f);
   if (!p && f.path) window.markpad.openDroppedFile(f.path);
 }, true);
 
-// 兜底：拖拽过程中如果离开窗口（dragend）也清掉高亮
 window.addEventListener('dragend', () => {
   document.body.classList.remove('drag-over');
 }, true);
 
 // ============ 启动 ============
-darkMode = computeDark();          // 先根据持久化的主题模式确定亮/暗
-initVditor(WELCOME);               // 用正确主题初始化编辑器
-applyThemeMode(false);             // 同步 body class 与原生主题（不重复持久化）
+darkMode = computeDark();
+initVditor(WELCOME);
+applyThemeMode(false);
 markDirty(false);
-window.markpad.rendererReady();    // 通知主进程：可以投递待打开文件了
+window.markpad.rendererReady();

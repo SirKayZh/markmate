@@ -106,9 +106,43 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   letter-spacing: 0.5px;
 }
 
-#outline-content .vditor-outline__item {
-  padding: 4px 16px;
+/* vditor 自带 outline 的样式适配（我们自己搬进来，不自己渲染） */
+#outline-content .vditor-outline {
+  background: transparent;
+  padding: 0;
+  height: auto;
+  overflow: visible;
+  border: none;
+  position: static;
+}
+
+/* 隐藏 vditor 默认的"大纲"标题，我们有 .outline-title */
+#outline-content .vditor-outline__title {
+  display: none !important;
+}
+
+#outline-content .vditor-outline__content {
+  padding: 0;
+}
+
+#outline-content .vditor-outline__content ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#outline-content .vditor-outline__content li {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 每个可点击的标题 span */
+#outline-content [data-target-id] {
+  display: block;
+  padding: 3px 16px;
   font-size: 13px;
+  line-height: 1.6;
   cursor: pointer;
   color: var(--text);
   white-space: nowrap;
@@ -117,14 +151,12 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   border-left: 2px solid transparent;
 }
 
-#outline-content .vditor-outline__item:hover {
-  background: rgba(76, 139, 245, 0.12);
+#outline-content [data-target-id] > svg {
+  display: none; /* 隐藏展开箭头，平铺即可 */
 }
 
-#outline-content .vditor-outline__item.active {
-  background: rgba(76, 139, 245, 0.18);
-  border-left-color: var(--accent);
-  color: var(--accent);
+#outline-content [data-target-id]:hover {
+  background: rgba(76, 139, 245, 0.12);
 }
 
 /* 编辑器区域 */
