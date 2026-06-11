@@ -125,3 +125,20 @@ html, body {
 #statusbar span { -webkit-app-region: no-drag; }
 
 .spacer { flex: 1; }
+
+/* 拖拽文件到窗口时的视觉提示 */
+body.drag-over::after {
+  content: '松开以打开文件';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(76, 139, 245, 0.08);
+  border: 3px dashed var(--accent);
+  pointer-events: none;
+}

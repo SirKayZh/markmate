@@ -4,7 +4,15 @@ let vditorReady = false;
 let pendingValue = null;
 let isDirty = false;
 let outlineVisible = false;
+// 主题模式：'light' | 'dark' | 'system'，持久化到 localStorage
+let themeMode = localStorage.getItem('markpad-theme') || 'system';
+// 当前是否实际处于暗色（system 模式下由系统决定）
 let darkMode = false;
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+function computeDark() {
+  return themeMode === 'dark' || (themeMode === 'system' && systemDark.matches);
+}
 
 const statusFile = document.getElementById('status-file');
 const statusWords = document.getElementById('status-words');
@@ -178,23 +186,45 @@ function applyEditorTheme() {
   document.body.classList.toggle('dark', darkMode);
 }
 
-function toggleOutline() {
-  outlineVisible = !outlineVisible;
-  outlineEl.classList.toggle('hidden', !outlineVisible);
-  if (outlineVisible) refreshOutline();
-}
-
-function toggleTheme() {
-  darkMode = !darkMode;
+// 应用主题模式：重新计算暗色、刷新编辑器与原生外观，并持久化
+function applyThemeMode(persist = true) {
+  darkMode = computeDark();
   applyEditorTheme();
-  if (vditor) {
+  if (vditor && vditorReady) {
     vditor.setTheme(
       darkMode ? 'dark' : 'classic',
       darkMode ? 'dark' : 'light',
       darkMode ? 'native' : 'github'
     );
   }
+  // 同步原生主题（影响窗口标题栏/滚动条等）
+  window.markpad.setNativeTheme(themeMode);
+  if (persist) localStorage.setItem('markpad-theme', themeMode);
 }
+
+function setTheme(mode) {
+  if (!['light', 'dark', 'system'].includes(mode)) return;
+  themeMode = mode;
+  applyThemeMode();
+}
+
+function toggleOutline() {
+  outlineVisible = !outlineVisible;
+  outlineEl.classList.toggle('hidden', !outlineVisible);
+  if (outlineVisible) refreshOutline();
+}
+
+// ⌘/ 快捷键：在 亮 → 暗 → 跟随系统 之间循环
+function toggleTheme() {
+  const order = ['light', 'dark', 'system'];
+  const next = order[(order.indexOf(themeMode) + 1) % order.length];
+  setTheme(next);
+}
+
+// 跟随系统模式下，监听系统亮/暗变化实时切换
+systemDark.addEventListener('change', () => {
+  if (themeMode === 'system') applyThemeMode(false);
+});
 
 // ============ IPC 事件绑定 ============
 window.markpad.onFileOpened(({ path, content }) => {
@@ -226,7 +256,35 @@ window.markpad.onRequestExportHtml(async () => {
 
 window.markpad.onToggleOutline(() => toggleOutline());
 window.markpad.onToggleTheme(() => toggleTheme());
+window.markpad.onSetTheme((mode) => setTheme(mode));
 
-// 启动：显示欢迎文档
-initVditor(WELCOME);
+// ============ 窗口内拖拽打开文件 ============
+// 阻止默认行为（否则 Electron 会用文件替换整个页面），改为读取路径交给主进程打开
+window.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  document.body.classList.add('drag-over');
+});
+window.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.target === document.documentElement || !e.relatedTarget) {
+    document.body.classList.remove('drag-over');
+  }
+});
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  document.body.classList.remove('drag-over');
+  const files = Array.from(e.dataTransfer.files || []);
+  // 找到第一个 markdown/文本文件，路径交给主进程读取
+  const f = files.find((x) => /\.(md|markdown|mdown|txt)$/i.test(x.name)) || files[0];
+  if (f && f.path) window.markpad.openDroppedFile(f.path);
+});
+
+// ============ 启动 ============
+darkMode = computeDark();          // 先根据持久化的主题模式确定亮/暗
+initVditor(WELCOME);               // 用正确主题初始化编辑器
+applyThemeMode(false);             // 同步 body class 与原生主题（不重复持久化）
 markDirty(false);
+window.markpad.rendererReady();    // 通知主进程：可以投递待打开文件了

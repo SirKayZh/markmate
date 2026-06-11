@@ -1,10 +1,14 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 let mainWindow = null;
 // 记录每个窗口当前打开的文件路径
 let currentFilePath = null;
+// 冷启动时（窗口/渲染进程尚未就绪）通过 open-file / 命令行传入的待打开文件
+let pendingOpenPath = null;
+// 渲染进程是否已准备好接收 file-opened
+let rendererReady = false;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -25,6 +29,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    rendererReady = false;
   });
 
   // 拦截关闭：若有未保存内容，提示
@@ -51,13 +56,27 @@ async function doOpen() {
     ]
   });
   if (canceled || !filePaths.length) return;
-  const fp = filePaths[0];
+  openFile(filePaths[0]);
+}
+
+// 统一的打开文件入口：菜单打开、拖拽、Dock、命令行都走这里
+function openFile(fp) {
+  if (!fp) return;
+  // 窗口/渲染进程还没就绪：先记下，待 renderer-ready 后再打开（解决冷启动拖入丢失）
+  if (!mainWindow || !rendererReady) {
+    pendingOpenPath = fp;
+    // app 尚未 ready 时不能建窗口（macOS open-file 可能早于 ready 触发），交给 whenReady 处理
+    if (!mainWindow && app.isReady()) createWindow();
+    return;
+  }
   try {
     const content = fs.readFileSync(fp, 'utf-8');
     currentFilePath = fp;
     setTitle(fp, false);
     mainWindow.webContents.send('file-opened', { path: fp, content });
     app.addRecentDocument(fp);
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
   } catch (err) {
     dialog.showErrorBox('打开失败', String(err));
   }
@@ -168,7 +187,15 @@ function buildMenu() {
       label: '视图',
       submenu: [
         { label: '切换大纲', accelerator: 'CmdOrCtrl+\\', click: () => mainWindow.webContents.send('toggle-outline') },
-        { label: '切换主题（亮/暗）', accelerator: 'CmdOrCtrl+/', click: () => mainWindow.webContents.send('toggle-theme') },
+        {
+          label: '主题',
+          submenu: [
+            { label: '亮色', type: 'radio', click: () => mainWindow.webContents.send('set-theme', 'light') },
+            { label: '暗色', type: 'radio', click: () => mainWindow.webContents.send('set-theme', 'dark') },
+            { label: '跟随系统', type: 'radio', click: () => mainWindow.webContents.send('set-theme', 'system') }
+          ]
+        },
+        { label: '切换亮/暗', accelerator: 'CmdOrCtrl+/', click: () => mainWindow.webContents.send('toggle-theme') },
         { type: 'separator' },
         { role: 'resetZoom', label: '实际大小' },
         { role: 'zoomIn', label: '放大' },
@@ -190,23 +217,54 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// 打开最近文件（macOS Dock）
+// 打开最近文件（macOS Dock 拖拽到图标、Finder 双击、"打开方式"）
 app.on('open-file', (event, fp) => {
   event.preventDefault();
-  if (mainWindow) {
-    try {
-      const content = fs.readFileSync(fp, 'utf-8');
-      currentFilePath = fp;
-      setTitle(fp, false);
-      mainWindow.webContents.send('file-opened', { path: fp, content });
-    } catch (e) {}
+  openFile(fp);
+});
+
+// 渲染进程把窗口内拖入的文件路径回传，主进程读取内容并打开
+ipcMain.on('open-dropped-file', (event, fp) => {
+  openFile(fp);
+});
+
+// 渲染进程初始化完成，可接收 file-opened；若有挂起的待打开文件，此时投递
+ipcMain.on('renderer-ready', () => {
+  rendererReady = true;
+  if (pendingOpenPath) {
+    const fp = pendingOpenPath;
+    pendingOpenPath = null;
+    openFile(fp);
   }
 });
+
+// 主题持久化：渲染进程通知当前是否暗色，主进程同步原生 vibrancy/背景与窗口外观
+ipcMain.on('set-native-theme', (event, mode) => {
+  // mode: 'light' | 'dark' | 'system'
+  if (mode === 'light' || mode === 'dark' || mode === 'system') {
+    nativeTheme.themeSource = mode;
+  }
+});
+
+// 从命令行参数中提取可能的待打开文件（非 macOS 的 Finder/资源管理器双击、"打开方式"）
+function fileFromArgv(argv) {
+  // 跳过可执行文件本身与 electron 的 flag 参数
+  const args = argv.slice(app.isPackaged ? 1 : 2);
+  for (const a of args) {
+    if (a.startsWith('-')) continue;
+    if (/\.(md|markdown|mdown|txt)$/i.test(a) && fs.existsSync(a)) return a;
+  }
+  return null;
+}
 
 app.whenReady().then(() => {
   createWindow();
   buildMenu();
   setTitle(null, false);
+
+  // 冷启动命令行带文件（macOS 由 open-file 处理，这里兜底其它平台）
+  const argFile = fileFromArgv(process.argv);
+  if (argFile) pendingOpenPath = argFile;
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

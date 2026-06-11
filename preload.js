@@ -7,10 +7,14 @@ contextBridge.exposeInMainWorld('markpad', {
   onRequestSave: (cb) => ipcRenderer.on('request-save', (e, data) => cb(data)),
   onToggleOutline: (cb) => ipcRenderer.on('toggle-outline', () => cb()),
   onToggleTheme: (cb) => ipcRenderer.on('toggle-theme', () => cb()),
+  onSetTheme: (cb) => ipcRenderer.on('set-theme', (e, mode) => cb(mode)),
   onRequestExportHtml: (cb) => ipcRenderer.on('request-export-html', () => cb()),
 
   // 渲染进程 -> 主进程
   saveContent: (content, saveAs) => ipcRenderer.invoke('save-content', { content, saveAs }),
   exportHtml: (html) => ipcRenderer.invoke('export-html', { html }),
-  setDirty: (dirty) => ipcRenderer.send('set-dirty', dirty)
+  setDirty: (dirty) => ipcRenderer.send('set-dirty', dirty),
+  openDroppedFile: (filePath) => ipcRenderer.send('open-dropped-file', filePath),
+  rendererReady: () => ipcRenderer.send('renderer-ready'),
+  setNativeTheme: (mode) => ipcRenderer.send('set-native-theme', mode)
 });

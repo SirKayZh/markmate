@@ -1,6 +1,6 @@
 {
   "name": "markpad",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "A Typora-like WYSIWYG Markdown editor for macOS, built with Electron + Vditor",
   "main": "main.js",
   "author": "MarkPad Contributors",
@@ -10,7 +10,15 @@
     "type": "git",
     "url": "https://github.com/SirKayZh/markpad.git"
   },
-  "keywords": ["markdown", "editor", "typora", "electron", "vditor", "macos", "wysiwyg"],
+  "keywords": [
+    "markdown",
+    "editor",
+    "typora",
+    "electron",
+    "vditor",
+    "macos",
+    "wysiwyg"
+  ],
   "scripts": {
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
     "dmg": "bash scripts/build-dmg.sh",
@@ -36,10 +44,37 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ]
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "mdown",
+          "mkd",
+          "mdtext"
+        ],
+        "name": "Markdown Document",
+        "description": "Markdown 文档",
+        "role": "Editor",
+        "rank": "Owner"
+      },
+      {
+        "ext": [
+          "txt"
+        ],
+        "name": "Text Document",
+        "description": "纯文本文档",
+        "role": "Editor",
+        "rank": "Alternate"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^31.0.0",
