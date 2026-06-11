@@ -9,7 +9,15 @@
 </head>
 <body>
   <!-- 顶部拖拽区（macOS 红绿灯下方留白） -->
-  <div id="drag-bar"></div>
+  <div id="drag-bar">
+    <button id="theme-toggle" type="button" title="切换主题（⌘/）" aria-label="切换主题">
+      <!-- 单一图标：一个一半亮一半暗的圆，点击循环 亮 → 暗 → 跟随系统 -->
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/>
+      </svg>
+    </button>
+  </div>
 
   <div id="app">
     <!-- 大纲侧栏 -->

@@ -184,6 +184,9 @@ function escapeHtml(s) {
 
 function applyEditorTheme() {
   document.body.classList.toggle('dark', darkMode);
+  // 同步右上角主题按钮的图标与提示
+  document.body.setAttribute('data-theme-mode', themeMode);
+  if (typeof updateThemeBtnTitle === 'function') updateThemeBtnTitle();
 }
 
 // 应用主题模式：重新计算暗色、刷新编辑器与原生外观，并持久化
@@ -258,29 +261,69 @@ window.markpad.onToggleOutline(() => toggleOutline());
 window.markpad.onToggleTheme(() => toggleTheme());
 window.markpad.onSetTheme((mode) => setTheme(mode));
 
+// 右上角主题切换按钮：点击循环 亮 → 暗 → 跟随系统
+const themeToggleBtn = document.getElementById('theme-toggle');
+function updateThemeBtnTitle() {
+  if (!themeToggleBtn) return;
+  const cur  = { light:'亮色', dark:'暗色', system:'跟随系统' }[themeMode] || '';
+  const next = { light:'暗色', dark:'跟随系统', system:'亮色' }[themeMode] || '主题';
+  themeToggleBtn.title = `当前：${cur} · 点击切到 ${next}（⌘/）`;
+}
+if (themeToggleBtn) {
+  themeToggleBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleTheme();
+  });
+}
+
 // ============ 窗口内拖拽打开文件 ============
-// 阻止默认行为（否则 Electron 会用文件替换整个页面），改为读取路径交给主进程打开
+// 阻止默认行为（否则 Electron 会用文件替换整个页面），改为读取路径交给主进程打开。
+// 用 capture 阶段在窗口最外层抢先处理，避免被 Vditor 等内部组件的 drop 监听吞掉。
+function isFileDrag(e) {
+  const types = e.dataTransfer && e.dataTransfer.types;
+  if (!types) return false;
+  // DataTransferItemList 既可能是数组也可能是 DOMStringList，统一遍历
+  for (let i = 0; i < types.length; i++) {
+    if (types[i] === 'Files') return true;
+  }
+  return false;
+}
+
 window.addEventListener('dragover', (e) => {
+  if (!isFileDrag(e)) return;
   e.preventDefault();
   e.stopPropagation();
   document.body.classList.add('drag-over');
-});
+}, true);
+
 window.addEventListener('dragleave', (e) => {
+  if (!isFileDrag(e)) return;
   e.preventDefault();
   e.stopPropagation();
+  // 只有真正离开窗口才清除高亮
   if (e.target === document.documentElement || !e.relatedTarget) {
     document.body.classList.remove('drag-over');
   }
-});
+}, true);
+
 window.addEventListener('drop', (e) => {
+  if (!isFileDrag(e)) return;
   e.preventDefault();
   e.stopPropagation();
   document.body.classList.remove('drag-over');
   const files = Array.from(e.dataTransfer.files || []);
-  // 找到第一个 markdown/文本文件，路径交给主进程读取
-  const f = files.find((x) => /\.(md|markdown|mdown|txt)$/i.test(x.name)) || files[0];
-  if (f && f.path) window.markpad.openDroppedFile(f.path);
-});
+  // 优先 markdown/文本文件
+  const f = files.find((x) => /\.(md|markdown|mdown|mkd|mdtext|txt)$/i.test(x.name)) || files[0];
+  if (!f) return;
+  // Electron 32+ 已移除 File.path，统一走 preload 里的 webUtils 解析
+  const p = window.markpad.openDroppedFileFromFile(f);
+  if (!p && f.path) window.markpad.openDroppedFile(f.path);
+}, true);
+
+// 兜底：拖拽过程中如果离开窗口（dragend）也清掉高亮
+window.addEventListener('dragend', () => {
+  document.body.classList.remove('drag-over');
+}, true);
 
 // ============ 启动 ============
 darkMode = computeDark();          // 先根据持久化的主题模式确定亮/暗

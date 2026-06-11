@@ -39,7 +39,37 @@ html, body {
   -webkit-app-region: drag;
   background: var(--bg);
   flex-shrink: 0;
+  position: relative;
 }
+
+/* 右上角主题切换图标：一个图标，点击循环 亮 → 暗 → 跟随系统 */
+#theme-toggle {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--status-text);
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+#theme-toggle:hover {
+  background: rgba(127, 127, 127, 0.15);
+  color: var(--text);
+}
+#theme-toggle:active {
+  transform: scale(0.92);
+}
+/* 用透明度区分三种模式：跟随系统稍微淡一些以示"自动" */
+body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
 
 #app {
   display: flex;
