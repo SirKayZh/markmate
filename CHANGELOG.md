@@ -9,6 +9,22 @@
 
 ---
 
+## [1.4.1] - 2026-06-12
+
+### 修复 Fixed
+- **大纲点击跳转真正生效**：v1.4.0 的实现逻辑虽对、但用户感知不到——根因有两个：
+  1. 之前的 `getEditorRoot()` 把滚动容器锁定到了 `.vditor-reset` 节点（也叫"内容元素"），但 IR 模式下真正可滚动的是它自己（`pre.vditor-reset`，`overflow-y:auto`），需要从目标 h 元素往上找最近一个 `scrollHeight > clientHeight` 的祖先才稳。
+  2. 点完大纲，光标还停在原编辑位置，用户一打字就跳回去，会以为"没跳过"。
+- 现在大纲点击：① 用 `getScrollContainerFromElement(target)` 沿祖先链找正确滚动容器；② 平滑滚动到目标；③ 给目标标题做一个 1.1s 的**蓝色淡入淡出闪烁**（`.mp-heading-flash`）作为视觉确认；④ 把光标移到目标标题开头（`window.getSelection` + `Range`），确保后续编辑就在这里发生。
+- 通过 Chrome DevTools Protocol 真机自动化验证：6 个标题逐个点击，`scrollTop` 数值递增正确，每次都有 flash 元素出现，大纲 active 项也跟着切换。
+
+### 技术细节 Technical
+- `renderer.js`：新增 `getScrollContainerFromElement` / `flashHeading` / `moveCaretTo`；移除"在 h 上挂 id"的无效逻辑（vditor 每次 input 都会重渲染 DOM，挂的属性会被冲掉，所以改用即时 `querySelectorAll` + 索引定位）。
+- `styles.css`：新增 `@keyframes mp-heading-flash-kf` 动画。
+- `main.js`：保留环境变量 `MARKPAD_DEBUG=1` 时自动打开 DevTools，方便后续诊断（生产模式默认关闭）。
+
+---
+
 ## [1.4.0] - 2026-06-11
 
 ### 新增 Added

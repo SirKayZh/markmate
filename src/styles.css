@@ -152,6 +152,17 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   line-height: 1.8;
 }
 
+/* 大纲跳转后短暂闪烁目标标题，给用户视觉反馈 */
+@keyframes mp-heading-flash-kf {
+  0%   { background-color: rgba(76, 139, 245, 0.0); }
+  20%  { background-color: rgba(76, 139, 245, 0.28); }
+  100% { background-color: rgba(76, 139, 245, 0.0); }
+}
+.mp-heading-flash {
+  animation: mp-heading-flash-kf 1.1s ease-out;
+  border-radius: 4px;
+}
+
 /* 右侧源码面板 */
 #source-pane {
   width: 420px;

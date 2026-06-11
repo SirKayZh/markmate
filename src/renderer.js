@@ -204,48 +204,111 @@ function refreshOutline() {
   });
 }
 
-function getEditorRoot() {
-  // Vditor IR 模式的实际滚动容器是 .vditor-ir > .vditor-ir__content（外层），内容渲染区是 .vditor-reset
-  return document.querySelector('.vditor-ir .vditor-reset')
-      || document.querySelector('.vditor-reset')
-      || document.querySelector('.vditor-ir__content');
+// Vditor IR 模式：实际可滚动的容器是 pre.vditor-reset（高度100%且内容超长产生滚动）
+// 但保险起见，沿着 h 元素往上查最近一个实际有滚动的祖先
+function getScrollContainerFromElement(el) {
+  let p = el && el.parentElement;
+  while (p && p !== document.body) {
+    const style = getComputedStyle(p);
+    const oy = style.overflowY;
+    if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && p.scrollHeight > p.clientHeight + 1) {
+      return p;
+    }
+    p = p.parentElement;
+  }
+  // fallback
+  return document.querySelector('.vditor-ir pre.vditor-reset')
+      || document.querySelector('pre.vditor-reset')
+      || document.querySelector('.vditor-ir')
+      || document.scrollingElement;
 }
 
 function getEditorHeadings() {
-  const root = getEditorRoot();
+  // IR 模式下，h 元素挂在 .vditor-ir 的内容区（pre.vditor-reset）里；
+  // 直接从 .vditor 根开始 query 所有 h1~h6，保证按文档顺序返回
+  const root = document.querySelector('.vditor-ir')
+            || document.querySelector('.vditor')
+            || document.getElementById('vditor');
   if (!root) return [];
-  // Vditor IR 模式下，标题的 wrapper 通常是 .vditor-ir__node 包着原生 h1~h6
   return Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'));
 }
 
 function tagHeadingsInDom() {
   const hs = getEditorHeadings();
   hs.forEach((h, i) => {
-    if (parsedHeadings[i]) {
-      h.dataset.mpIdx = String(i);
-      h.id = parsedHeadings[i].slug;
-    }
+    h.dataset.mpIdx = String(i);
   });
 }
 
 function scrollToHeadingByIndex(idx) {
-  // 先 tag 一遍，避免内容刚变 DOM 还没贴 id
-  tagHeadingsInDom();
+  // 即时取 DOM，vditor 重渲染后旧引用都会失效
   const hs = getEditorHeadings();
-  const target = hs[idx];
-  if (!target) return;
-  // 编辑器实际滚动容器：Vditor IR 模式下是 .vditor-ir__content
-  const scroller = target.closest('.vditor-ir__content')
-    || target.closest('.vditor-reset')
-    || getEditorRoot();
-  if (scroller && scroller.scrollTo) {
-    // 用 offset 计算更可靠：scrollIntoView 在虚拟父级里有时不准
-    const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 12;
+  let target = hs[idx];
+  if (!target) {
+    // fallback：用文本匹配
+    const heading = parsedHeadings[idx];
+    if (heading) {
+      const norm = (s) => (s || '').replace(/[#\s]/g, '');
+      target = hs.find((el) => norm(el.textContent).includes(norm(heading.text)));
+    }
+  }
+  if (!target) {
+    return;
+  }
+  const scroller = getScrollContainerFromElement(target);
+  scrollElementInto(target, scroller);
+  highlightOutlineItem(idx);
+  flashHeading(target);
+  // 把光标移到目标标题，让随后的编辑就在这里发生（也提供"跳转生效"的视觉确认）
+  moveCaretTo(target);
+}
+
+// 让目标标题短暂闪烁一下，给用户视觉反馈
+function flashHeading(el) {
+  if (!el) return;
+  el.classList.remove('mp-heading-flash'); // 重置动画
+  // 强制 reflow 才能重新触发动画
+  void el.offsetWidth;
+  el.classList.add('mp-heading-flash');
+  setTimeout(() => el.classList.remove('mp-heading-flash'), 1200);
+}
+
+// 把光标定位到指定标题元素的开头（IR 模式下 h 是 contenteditable 的）
+function moveCaretTo(el) {
+  if (!el) return;
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(true); // 起点
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    // 让编辑器拿到焦点，避免点了大纲焦点还在大纲上
+    el.focus && el.focus({ preventScroll: true });
+  } catch (e) {
+    // 忽略：某些状态下 selection 操作可能失败，但滚动已经发生过
+  }
+}
+
+function scrollElementInto(target, scroller) {
+  if (!target || !scroller) return;
+  if (scroller === document.scrollingElement || scroller === document.documentElement || scroller === document.body) {
+    // 整页滚动
+    const top = target.getBoundingClientRect().top + window.scrollY - 16;
+    window.scrollTo({ top, behavior: 'smooth' });
+    return;
+  }
+  const targetRect = target.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const top = targetRect.top - scrollerRect.top + scroller.scrollTop - 12;
+  if (typeof scroller.scrollTo === 'function') {
     scroller.scrollTo({ top, behavior: 'smooth' });
   } else {
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scroller.scrollTop = top;
   }
-  // 高亮当前项
+}
+
+function highlightOutlineItem(idx) {
   document.querySelectorAll('#outline-content .vditor-outline__item').forEach((el, i) => {
     el.classList.toggle('active', i === idx);
   });

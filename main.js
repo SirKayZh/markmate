@@ -33,6 +33,11 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
+  if (process.env.MARKPAD_DEBUG === '1') {
+    mainWindow.webContents.openDevTools({ mode: 'right' });
+  }
+
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     rendererReady = false;
