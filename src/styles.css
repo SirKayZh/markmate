@@ -190,6 +190,53 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   line-height: 1.8;
 }
 
+/* 代码行号样式 */
+.vditor-reset .hljs-ln-numbers {
+  user-select: none;
+  text-align: right;
+  color: var(--status-text);
+  border-right: 1px solid var(--border);
+  padding-right: 10px !important;
+  padding-left: 8px !important;
+  vertical-align: top;
+}
+.vditor-reset .hljs-ln-code {
+  padding-left: 12px !important;
+}
+
+/* ==高亮== 文本 */
+.vditor-reset mark {
+  background: rgba(255, 212, 0, 0.35);
+  border-radius: 2px;
+  padding: 1px 2px;
+  color: inherit;
+}
+body.dark .vditor-reset mark {
+  background: rgba(255, 212, 0, 0.25);
+}
+
+/* 脚注 */
+.vditor-reset .footnotes {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--status-text);
+}
+.vditor-reset .footnotes ol { padding-left: 20px; }
+.vditor-reset .footnotes a { color: var(--accent); }
+
+/* 目录 TOC */
+.vditor-reset .vditor-toc {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 20px;
+  margin: 16px 0;
+}
+.vditor-reset .vditor-toc a { color: var(--accent); text-decoration: none; }
+.vditor-reset .vditor-toc a:hover { text-decoration: underline; }
+
 /* 大纲跳转后短暂闪烁目标标题，给用户视觉反馈 */
 @keyframes mp-heading-flash-kf {
   0%   { background-color: rgba(76, 139, 245, 0.0);  box-shadow: 0 0 0 0   rgba(76, 139, 245, 0.0); }

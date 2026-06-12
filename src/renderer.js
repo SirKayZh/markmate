@@ -28,51 +28,80 @@ const sourceEditor = document.getElementById('source-editor');
 
 const WELCOME = `# 欢迎使用 MarkPad
 
-一款 **类 Typora** 的所见即所得 Markdown 编辑器。直接在这里输入，内容会实时渲染。
+一款 **类 Typora** 的所见即所得 Markdown 编辑器。直接在这里输入，内容会即时渲染。
 
-## 快速上手
+## 基础格式
 
-- 输入 \`# 标题\` 自动变成大号标题
-- 输入 \`**粗体**\`、\`*斜体*\`、\`~~删除线~~\`
-- 输入 \`-\` 或 \`1.\` 创建列表
-- 输入 \`>\` 创建引用块
-- 输入三个反引号创建代码块
+**粗体**、*斜体*、~~删除线~~、\`行内代码\`、==Markdown 高亮（导出生效）==
 
-## 代码高亮
+## 列表与引用
 
-\`\`\`javascript
-function hello(name) {
-  console.log(\`Hello, \${name}!\`);
-}
-hello('MarkPad');
-\`\`\`
+- 无序列表项
+  1. 有序子列表
+  2. 有序子列表
+- 另一个列表项
+
+> 这是一级引用
+> > 这是二级嵌套引用
+
+## 任务清单
+
+- [x] 已完成任务
+- [x] 另一个已完成
+- [ ] 待办任务
+- [ ] 另一项待办
+
+## 链接
+
+[MarkPad GitHub](https://github.com/SirKayZh/markpad)
+
+## 图片
+
+直接拖拽图片或粘贴截图到编辑器，自动保存到文档同目录的 assets/ 子文件夹。
 
 ## 表格
 
-| 功能 | 快捷键 |
-| --- | --- |
-| 新建 | ⌘N |
-| 打开 | ⌘O |
-| 保存 | ⌘S |
-| 切换大纲 | ⌘\\\\ |
-| 切换源码 | ⌘E |
-| 切换主题 | ⌘/ |
+| 功能 | 快捷键 | 说明 |
+| --- | --- | --- |
+| 新建 | ⌘N | 创建空白文档 |
+| 打开 | ⌘O | 打开 .md 文件 |
+| 保存 | ⌘S | 保存当前文档 |
+| 大纲 | ⌘\\ | 左侧目录展开/收起 |
+| 源码 | ⌘E | 右侧 Markdown 源码 |
+| 主题 | ⌘/ | 亮色 / 暗色 / 系统 |
 
-## 数学公式
+## 代码块（行号 + 100+ 语言高亮）
 
-行内公式 $E = mc^2$，块级公式：
+\`\`\`javascript
+function fibonacci(n) {
+  if (n <= 1) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+console.log(fibonacci(10)); // 55
+\`\`\`
 
-$$\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}$$
+\`\`\`python
+def greet(name):
+    """向用户问好"""
+    return f"你好, {name}!"
 
-## 任务列表
+print(greet("MarkPad"))
+\`\`\`
 
-- [x] 实时渲染
-- [x] 大纲导航
-- [x] 源码视图
-- [x] 暗色主题
-- [ ] 你的下一篇文档
+## 数学公式（LaTeX / KaTeX）
 
-> 提示：⌘S 保存，⌘\\\\ 打开大纲，⌘E 打开源码，⌘/ 切换暗色模式。
+行内公式：$E = mc^2$
+
+块级公式：
+$$
+\\\\int_{-\\\\infty}^{\\\\infty} e^{-x^2} dx = \\\\sqrt{\\\\pi}
+$$
+
+## 脚注与目录
+
+脚注[^1] 和 \`[toc]\` 目录在导出 HTML 时完整渲染，IR 编辑模式下显示为 Markdown 源码。
+
+[^1]: MarkPad 基于 Vditor 即时渲染引擎 + Electron 桌面框架。
 
 ---
 
@@ -106,10 +135,26 @@ function initVditor(value) {
     cache: { enable: false },
     toolbar: [],
     counter: { enable: false },
+    // 扩展 Markdown 语法全支持
+    markdown: {
+      mark: true,           // ==高亮==
+      toc: true,            // [toc] 自动生成目录
+      footnotes: true,      // 脚注 [^1]
+      autoSpace: true,      // 中英文间自动空格
+      fixTermTypo: true,    // 自动术语修正
+    },
     preview: {
       theme: { current: darkMode ? 'dark' : 'light' },
-      hljs: { style: darkMode ? 'native' : 'github', lineNumber: false },
+      hljs: { style: darkMode ? 'native' : 'github', lineNumber: true },  // 代码行号
       math: { engine: 'KaTeX' }
+    },
+    // 图片拖拽/粘贴 → 保存到文档同目录的 assets/ 子目录
+    upload: {
+      max: 10 * 1024 * 1024,
+      accept: 'image/*',
+      handler(files) {
+        return handleImageUpload(files);
+      }
     },
     outline: { enable: true, position: 'left' },
     placeholder: '开始输入…',
@@ -136,6 +181,26 @@ function initVditor(value) {
       moveVditorOutline();
     }
   });
+}
+
+// ========= 图片上传：拖拽/粘贴 → 保存到 assets/ 子目录 =========
+async function handleImageUpload(files) {
+  const results = [];
+  for (const file of files) {
+    try {
+      const result = await window.markpad.saveUploadedImage(file);
+      // vditor 期望返回的格式是 URL；我们返回相对路径
+      results.push(result.url);
+    } catch (err) {
+      console.error('[MarkPad] 图片上传失败:', err);
+      return ''; // 失败返回空字符串，vditor 不会插入任何内容
+    }
+  }
+  // vditor handler 期望返回 Promise<string>。多文件时返回 JSON 字符串会被 vditor 认识？
+  // 单文件最稳，多文件 vditor 会逐个调用 handler，所以这里直接返回第一个结果
+  if (results.length === 1) return results[0];
+  // 多文件兜底：暂时只处理第一个（vditor IR 模式多为单文件拖入）
+  return results[0] || '';
 }
 
 // ========= 大纲：使用 vditor 自带 outline，只把它搬进我们的侧边栏 =========
@@ -445,10 +510,13 @@ window.addEventListener('dragleave', (e) => {
 
 window.addEventListener('drop', (e) => {
   if (!isFileDrag(e)) return;
+  const files = Array.from(e.dataTransfer.files || []);
+  // 图片文件放行给 vditor 自带的 upload handler 处理
+  const allImages = files.every((f) => /\.(png|jpg|jpeg|gif|svg|webp|bmp|ico)$/i.test(f.name));
+  if (allImages) return; // 不拦截，让 vditor 处理
   e.preventDefault();
   e.stopPropagation();
   document.body.classList.remove('drag-over');
-  const files = Array.from(e.dataTransfer.files || []);
   const f = files.find((x) => /\.(md|markdown|mdown|mkd|mdtext|txt)$/i.test(x.name)) || files[0];
   if (!f) return;
   const p = window.markpad.openDroppedFileFromFile(f);

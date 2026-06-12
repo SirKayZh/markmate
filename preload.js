@@ -42,5 +42,15 @@ contextBridge.exposeInMainWorld('markpad', {
   setNativeTheme: (mode) => ipcRenderer.send('set-native-theme', mode),
   // 关闭确认：渲染让主进程弹原生对话框，返回 'save'/'discard'/'cancel'
   askCloseConfirm: () => ipcRenderer.invoke('ask-close-confirm'),
-  confirmCloseReply: (payload) => ipcRenderer.send('confirm-close-reply', payload)
+  confirmCloseReply: (payload) => ipcRenderer.send('confirm-close-reply', payload),
+  // 图片上传：把 File 的 buffer 交给主进程写盘，返回 { url: 相对路径 }
+  saveUploadedImage: async (file) => {
+    const buf = await file.arrayBuffer();
+    return ipcRenderer.invoke('save-uploaded-image', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      buffer: Array.from(new Uint8Array(buf))
+    });
+  }
 });

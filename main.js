@@ -307,6 +307,44 @@ ipcMain.on('set-native-theme', (event, mode) => {
   }
 });
 
+// 图片上传：渲染进程把图片数据给主进程保存到 assets/ 目录
+ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }) => {
+  try {
+    // 确定图片保存目录：有已打开文件 → 同目录 assets/；否则 → 临时目录
+    const baseDir = currentFilePath
+      ? path.dirname(currentFilePath)
+      : app.getPath('temp');
+    const assetsDir = path.join(baseDir, 'assets');
+    if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
+
+    // 生成唯一文件名，避免冲突
+    const ext = path.extname(name) || '.png';
+    const stem = path.basename(name, ext).replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_').slice(0, 40)
+               || 'image';
+    const ts = Date.now();
+    let filename = `${stem}${ext}`;
+    let fullPath = path.join(assetsDir, filename);
+    // 文件名冲突时加时间戳后缀
+    if (fs.existsSync(fullPath)) {
+      filename = `${stem}_${ts}${ext}`;
+      fullPath = path.join(assetsDir, filename);
+    }
+
+    const buf = Buffer.from(buffer);
+    fs.writeFileSync(fullPath, buf);
+
+    // 返回相对于文档目录的路径（vditor 用它引用图片）
+    const relPath = (currentFilePath ? './' : '') + 'assets/' + filename;
+
+    // 如果是"本文档之外"的 assets（临时目录），返回绝对路径更稳
+    const url = currentFilePath ? relPath : fullPath;
+    return { url, path: fullPath };
+  } catch (err) {
+    console.error('[MarkPad] 图片保存失败:', err);
+    return { url: '', path: '' };
+  }
+});
+
 // 从命令行参数中提取可能的待打开文件（非 macOS 的 Finder/资源管理器双击、"打开方式"）
 function fileFromArgv(argv) {
   // 跳过可执行文件本身与 electron 的 flag 参数

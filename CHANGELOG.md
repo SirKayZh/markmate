@@ -9,6 +9,33 @@
 
 ---
 
+## [1.5.0] - 2026-06-12
+
+### 新增 Added
+- **Markdown 扩展语法配置**：启用 vditor `markdown` 扩展选项：
+  - `mark: true` — `==高亮==` 语法支持（IR 模式下显示源码，导出 HTML 时完整渲染为 `<mark>`）
+  - `footnotes: true` — 脚注 `[^1]` 语法（导出时渲染脚注区）
+  - `toc: true` — `[toc]` 自动生成目录（导出时渲染完整 TOC）
+  - `autoSpace: true` — 中英文间自动空格
+  - `fixTermTypo: true` — 自动术语修正
+- **代码块行号**：`preview.hljs.lineNumber: true`，代码块左侧显示行号，CSS 适配明暗主题
+- **图片拖拽 / 粘贴上传**：
+  - 拖拽图片到编辑器或粘贴截图，自动保存到文档同目录的 `assets/` 子文件夹
+  - 图片文件名自动去重（加时间戳后缀）
+  - 未保存文档的图片暂存到系统临时目录
+  - IPC 通道：`save-uploaded-image`（preload → main）
+  - 修复了之前的 drop handler 会拦截所有文件（包括图片）的问题——现在图片放行给 vditor 处理
+- **语法完整欢迎文档**：新的 `WELCOME` 文档覆盖粗体/斜体/删除线/高亮/列表/任务清单/引用/链接/表格/代码块/数学公式/脚注/目录等全部常用语法
+
+### 技术细节 Technical
+- `renderer.js`：`initVditor` 新增 `markdown` / `upload` 配置；新增 `handleImageUpload` 函数；drop handler 加入图片检测（`allImages` 判断，放行给 vditor）
+- `preload.js`：新增 `saveUploadedImage` IPC invoke（把 File.arrayBuffer 序列化为 Uint8Array 传给主进程）
+- `main.js`：新增 `save-uploaded-image` IPC handler（创建 assets/ 目录、去重、写盘、返回相对路径）
+- `styles.css`：新增 `.hljs-ln-numbers` / `mark` / `.footnotes` / `.vditor-toc` 样式
+- CDP 验证：粗体/斜体/删除线/引用/列表/任务清单/表格/代码高亮/数学公式/水平线/链接/大纲跳转/图片上传 IPC 全部通过
+
+---
+
 ## [1.4.4] - 2026-06-12
 
 ### 修复 Fixed
