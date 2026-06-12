@@ -224,9 +224,12 @@ function buildMenu() {
       submenu: [
         { label: '新建', accelerator: 'CmdOrCtrl+N', click: doNew },
         { label: '打开…', accelerator: 'CmdOrCtrl+O', click: doOpen },
+        { label: '快速打开…', accelerator: 'CmdOrCtrl+P', click: () => mainWindow.webContents.send('quick-open') },
         { type: 'separator' },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: doSave },
         { label: '另存为…', accelerator: 'CmdOrCtrl+Shift+S', click: doSaveAs },
+        { type: 'separator' },
+        { label: '加入收藏', accelerator: 'CmdOrCtrl+D', click: () => mainWindow.webContents.send('toggle-favorite') },
         { type: 'separator' },
         { label: '导出 HTML…', click: () => mainWindow.webContents.send('request-export-html') }
       ]
@@ -248,8 +251,12 @@ function buildMenu() {
       submenu: [
         { label: '切换大纲', accelerator: 'CmdOrCtrl+\\', click: () => mainWindow.webContents.send('toggle-outline') },
         { label: '切换源码面板', accelerator: 'CmdOrCtrl+E', click: () => mainWindow.webContents.send('toggle-source') },
+        { type: 'separator' },
+        { label: '专注模式', accelerator: 'CmdOrCtrl+Shift+F', click: () => mainWindow.webContents.send('toggle-focus-mode') },
+        { label: '打字机模式', accelerator: 'CmdOrCtrl+Shift+T', click: () => mainWindow.webContents.send('toggle-typewriter-mode') },
+        { type: 'separator' },
         {
-          label: '主题',
+          label: '外观主题',
           submenu: [
             { label: '亮色', type: 'radio', click: () => mainWindow.webContents.send('set-theme', 'light') },
             { label: '暗色', type: 'radio', click: () => mainWindow.webContents.send('set-theme', 'dark') },
@@ -257,6 +264,17 @@ function buildMenu() {
           ]
         },
         { label: '切换亮/暗', accelerator: 'CmdOrCtrl+/', click: () => mainWindow.webContents.send('toggle-theme') },
+        {
+          label: '样式主题',
+          submenu: [
+            { label: '默认', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'default') },
+            { label: 'GitHub', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'github') },
+            { label: 'Night', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'night') },
+            { label: 'Sepia', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'sepia') },
+            { label: 'Slate', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'slate') }
+          ]
+        },
+        { label: '下一个样式主题', accelerator: 'CmdOrCtrl+Shift+/', click: () => mainWindow.webContents.send('next-style-theme') },
         { type: 'separator' },
         { role: 'resetZoom', label: '实际大小' },
         { role: 'zoomIn', label: '放大' },
@@ -305,6 +323,23 @@ ipcMain.on('set-native-theme', (event, mode) => {
   if (mode === 'light' || mode === 'dark' || mode === 'system') {
     nativeTheme.themeSource = mode;
   }
+});
+
+// 列出目录内容（返回 md/txt 文件）
+ipcMain.handle('list-directory', async (event, dirPath) => {
+  try {
+    if (!dirPath || !fs.existsSync(dirPath)) return [];
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    return entries
+      .filter(e => e.isDirectory() || /\.(md|markdown|mdown|mkd|txt)$/i.test(e.name))
+      .map(e => ({ name: e.name, isDir: e.isDirectory(), path: path.join(dirPath, e.name) }))
+      .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : (a.isDir ? -1 : 1)));
+  } catch (_) { return []; }
+});
+
+// 获取最近文件（从 app 系统级 + 额外存储；这里简单返回空让渲染层从 localStorage 取）
+ipcMain.handle('get-recent-files', async () => {
+  return []; // 渲染层自己管理 localStorage
 });
 
 // 图片上传：渲染进程把图片数据给主进程保存到 assets/ 目录

@@ -24,6 +24,14 @@ contextBridge.exposeInMainWorld('markpad', {
   onToggleTheme: (cb) => ipcRenderer.on('toggle-theme', () => cb()),
   onSetTheme: (cb) => ipcRenderer.on('set-theme', (e, mode) => cb(mode)),
   onRequestExportHtml: (cb) => ipcRenderer.on('request-export-html', () => cb()),
+  // 专注模式 / 打字机模式 / 样式主题
+  onToggleFocusMode: (cb) => ipcRenderer.on('toggle-focus-mode', () => cb()),
+  onToggleTypewriterMode: (cb) => ipcRenderer.on('toggle-typewriter-mode', () => cb()),
+  onNextStyleTheme: (cb) => ipcRenderer.on('next-style-theme', () => cb()),
+  onSetStyleTheme: (cb) => ipcRenderer.on('set-style-theme', (e, name) => cb(name)),
+  // 文件管理
+  onQuickOpen: (cb) => ipcRenderer.on('quick-open', () => cb()),
+  onToggleFavorite: (cb) => ipcRenderer.on('toggle-favorite', () => cb()),
   // 关闭前主进程问询
   onConfirmClose: (cb) => ipcRenderer.on('confirm-close', () => cb()),
 
@@ -52,5 +60,11 @@ contextBridge.exposeInMainWorld('markpad', {
       size: file.size,
       buffer: Array.from(new Uint8Array(buf))
     });
-  }
+  },
+  // 主动打开指定路径文件
+  openFileByPath: (fp) => ipcRenderer.send('open-dropped-file', fp),
+  // 获取最近文件列表（主进程存的）
+  getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
+  // 列出目录内容
+  listDirectory: (dirPath) => ipcRenderer.invoke('list-directory', dirPath),
 });

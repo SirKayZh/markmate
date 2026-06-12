@@ -5,6 +5,12 @@ let pendingValue = null;
 let isDirty = false;
 let outlineVisible = true;
 let sourceVisible = false;
+// 专注模式：仅高亮当前段落
+let focusMode = false;
+// 打字机模式：光标始终居中
+let typewriterMode = false;
+// 样式主题：'default' | 'github' | 'night' | 'sepia' | 'slate'，持久化到 localStorage
+let styleTheme = localStorage.getItem('markpad-style-theme') || 'default';
 // 源码↔渲染双向同步时用来抑制回环
 let syncingFromVditor = false;
 let syncingFromSource = false;
@@ -18,6 +24,8 @@ const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
 function computeDark() {
   return themeMode === 'dark' || (themeMode === 'system' && systemDark.matches);
 }
+
+let currentFilePath = null;
 
 const statusFile = document.getElementById('status-file');
 const statusWords = document.getElementById('status-words');
@@ -156,14 +164,14 @@ function initVditor(value) {
         return handleImageUpload(files);
       }
     },
-    outline: { enable: true, position: 'left' },
+    outline: { enable: false },
     placeholder: '开始输入…',
     input: () => {
       if (!syncingFromSource) {
         markDirty(true);
         updateStats();
         syncSourceFromVditor();
-        moveVditorOutline();
+        scheduleOutlineRefresh();
       }
     },
     after: () => {
@@ -178,7 +186,7 @@ function initVditor(value) {
       updateStats();
       applyEditorTheme();
       syncSourceFromVditor(true);
-      moveVditorOutline();
+      scheduleOutlineRefresh();
     }
   });
 }
@@ -203,58 +211,118 @@ async function handleImageUpload(files) {
   return results[0] || '';
 }
 
-// ========= 大纲：使用 vditor 自带 outline，只把它搬进我们的侧边栏 =========
+// ========= 大纲：自绘树形结构（多级缩进 + 折叠展开），不再依赖 vditor 自带 outline =========
 
-function moveVditorOutline() {
-  const container = document.getElementById('outline-content');
-  if (!container) return;
-  // 如果已经在容器里了就不动
-  if (container.querySelector('.vditor-outline')) return;
-
-  // 找到 vditor 生成的 outline DOM（在 .vditor-content 里）
-  const vdOutline = document.querySelector('.vditor-outline');
-  if (!vdOutline) return;
-
-  // 搬进我们的侧边栏
-  container.innerHTML = '';
-  container.appendChild(vdOutline);
-
-  // vditor 的默认标题（"大纲"）我们用自己的 .outline-title 替代，隐藏它的
-  const titleEl = vdOutline.querySelector('.vditor-outline__title');
-  if (titleEl) titleEl.style.display = 'none';
+// 折叠状态（按标题文本+层级记忆）
+const outlineCollapseKey = 'markpad-outline-collapsed';
+function getCollapsed() {
+  try { return new Set(JSON.parse(localStorage.getItem(outlineCollapseKey) || '[]')); }
+  catch (_) { return new Set(); }
+}
+function saveCollapsed(set) {
+  localStorage.setItem(outlineCollapseKey, JSON.stringify([...set]));
 }
 
-// 委托点击：拦截 vditor outline 的点击，用我们自己的滚动
-document.getElementById('outline-content').addEventListener('click', (e) => {
-  const span = e.target.closest('[data-target-id]');
-  if (!span) return;
+// 从 vditor 编辑区扫描所有标题，构建 [{id, level, text, children}] 树
+function buildHeadingTree() {
+  const editArea = document.querySelector('.vditor-ir');
+  if (!editArea) return [];
+  const headings = editArea.querySelectorAll('h1[data-block], h2[data-block], h3[data-block], h4[data-block], h5[data-block], h6[data-block]');
+  // 给每个标题确保有 id（vditor 会生成，但兜底）
+  const flat = [];
+  headings.forEach((h, i) => {
+    if (!h.id) h.id = 'mp-h-' + i;
+    const lv = parseInt(h.tagName.substring(1));
+    // 标题文本（去掉编辑标记符）
+    const span = h.querySelector('[data-render="1"]') || h;
+    const text = (span.innerText || h.innerText || '').replace(/^#+\s*/, '').trim() || '(无标题)';
+    flat.push({ id: h.id, level: lv, text, el: h });
+  });
+  // 构造树
+  const root = { level: 0, children: [] };
+  const stack = [root];
+  flat.forEach(node => {
+    node.children = [];
+    while (stack.length > 1 && stack[stack.length - 1].level >= node.level) stack.pop();
+    stack[stack.length - 1].children.push(node);
+    stack.push(node);
+  });
+  return root.children;
+}
 
+function renderOutlineTree() {
+  const tree = document.getElementById('outline-tree');
+  const empty = document.getElementById('outline-empty');
+  if (!tree) return;
+  const headings = buildHeadingTree();
+  if (!headings.length) {
+    tree.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  const collapsed = getCollapsed();
+
+  function nodeHtml(n, depth) {
+    const hasKids = n.children && n.children.length > 0;
+    const key = n.id;
+    const isCollapsed = collapsed.has(key);
+    const chevron = hasKids
+      ? `<span class="ol-chevron ${isCollapsed ? 'collapsed' : ''}" data-toggle="${escapeAttr(key)}">▾</span>`
+      : `<span class="ol-chevron ol-leaf"></span>`;
+    let html = `<div class="ol-item ol-lv-${n.level}" data-id="${escapeAttr(n.id)}" style="padding-left:${depth * 14 + 6}px" title="${escapeAttr(n.text)}">
+      ${chevron}<span class="ol-text">${escapeHtml(n.text)}</span>
+    </div>`;
+    if (hasKids && !isCollapsed) {
+      html += `<div class="ol-children">${n.children.map(c => nodeHtml(c, depth + 1)).join('')}</div>`;
+    }
+    return html;
+  }
+  tree.innerHTML = headings.map(n => nodeHtml(n, 0)).join('');
+}
+
+// 节流刷新（输入时不频繁重渲）
+let outlineRefreshTimer = null;
+function scheduleOutlineRefresh() {
+  if (outlineRefreshTimer) clearTimeout(outlineRefreshTimer);
+  outlineRefreshTimer = setTimeout(() => {
+    outlineRefreshTimer = null;
+    renderOutlineTree();
+  }, 200);
+}
+
+// 点击处理：折叠展开 + 跳转
+document.getElementById('outline-content').addEventListener('click', (e) => {
+  // 折叠展开
+  const chev = e.target.closest('[data-toggle]');
+  if (chev) {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = chev.getAttribute('data-toggle');
+    const c = getCollapsed();
+    if (c.has(id)) c.delete(id); else c.add(id);
+    saveCollapsed(c);
+    renderOutlineTree();
+    return;
+  }
+  // 点击条目跳转
+  const item = e.target.closest('.ol-item');
+  if (!item) return;
   e.preventDefault();
   e.stopPropagation();
-
-  const targetId = span.getAttribute('data-target-id');
+  const targetId = item.dataset.id;
   const heading = document.getElementById(targetId);
   if (!heading) return;
-
-  // 核心：浏览器原生 scrollIntoView —— 不管滚动容器嵌套多深都对
   try {
     heading.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
   } catch (_) {}
-
-  // Toast 反馈（顶部居中提示，用户绝不可能看不到）
-  showJumpToast(span);
-
-  // 闪烁高亮目标标题
+  showJumpToast({ textContent: item.querySelector('.ol-text')?.textContent || '' });
   flashHeading(heading);
+  // 高亮当前项
+  document.querySelectorAll('#outline-tree .ol-item').forEach(el => el.classList.remove('active'));
+  item.classList.add('active');
+}, true);
 
-  // 高亮当前大纲项
-  document.querySelectorAll('#outline-content [data-target-id]').forEach(s => {
-    s.style.background = '';
-    s.style.borderRadius = '';
-  });
-  span.style.background = 'rgba(76, 139, 245, 0.20)';
-  span.style.borderRadius = '4px';
-}, true); // capture 阶段拦截，比 vditor 自己的 handler 先跑
 
 // Toast 提示
 let jumpToastEl = null;
@@ -267,6 +335,23 @@ function showJumpToast(span) {
     document.body.appendChild(jumpToastEl);
   }
   jumpToastEl.textContent = '已跳转到：' + txt;
+  jumpToastEl.classList.remove('show');
+  void jumpToastEl.offsetWidth;
+  jumpToastEl.classList.add('show');
+  clearTimeout(jumpToastTimer);
+  jumpToastTimer = setTimeout(() => {
+    jumpToastEl && jumpToastEl.classList.remove('show');
+  }, 1400);
+}
+
+// 通用轻量 toast（收藏等操作反馈）
+function showQuickToast(msg) {
+  if (!jumpToastEl) {
+    jumpToastEl = document.createElement('div');
+    jumpToastEl.id = 'mp-jump-toast';
+    document.body.appendChild(jumpToastEl);
+  }
+  jumpToastEl.textContent = msg;
   jumpToastEl.classList.remove('show');
   void jumpToastEl.offsetWidth;
   jumpToastEl.classList.add('show');
@@ -290,8 +375,199 @@ function flashHeading(el) {
 function toggleOutline() {
   outlineVisible = !outlineVisible;
   outlineEl.classList.toggle('hidden', !outlineVisible);
-  if (outlineVisible) moveVditorOutline();
+  if (outlineVisible) {
+    // 恢复用户拖动设置的宽度或默认值
+    const w = outlineEl.dataset.userWidth || '240';
+    outlineEl.style.width = w + 'px';
+    moveVditorOutline();
+  } else {
+    // 收起时必须清除 inline width，否则 CSS 的 width:0 被覆盖
+    outlineEl.style.width = '';
+  }
 }
+
+// 大纲标题栏里的折叠按钮
+document.getElementById('outline-toggle').addEventListener('click', (e) => {
+  e.preventDefault();
+  toggleOutline();
+});
+
+// ========= 侧栏 Tab 切换（文件 / 大纲）=========
+let sidebarTab = 'files'; // 默认显示文件管理
+const outlineContent = document.getElementById('outline-content');
+const filesContent = document.getElementById('files-content');
+
+function switchSidebarTab(tab) {
+  sidebarTab = tab;
+  document.querySelectorAll('.outline-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  // 用 display 强制控制，避免被其他 class 干扰
+  if (outlineContent) {
+    outlineContent.classList.toggle('hidden', tab !== 'outline');
+    outlineContent.style.display = tab === 'outline' ? '' : 'none';
+  }
+  if (filesContent) {
+    filesContent.classList.toggle('hidden', tab !== 'files');
+    filesContent.style.display = tab === 'files' ? '' : 'none';
+  }
+  if (tab === 'outline') renderOutlineTree();
+  if (tab === 'files') refreshFileList();
+}
+document.querySelectorAll('.outline-tab').forEach(btn => {
+  btn.addEventListener('click', () => switchSidebarTab(btn.dataset.tab));
+});
+
+// ========= 文件列表渲染 =========
+async function refreshFileList() {
+  // 收藏夹
+  const favs = getFavorites();
+  renderFileSection('fav-list', favs.map(f => ({ ...f, isFav: true })), true);
+  // 最近文件
+  const recent = getRecentFiles();
+  renderFileSection('recent-list', recent.map(f => ({ ...f, isFav: isFavorited(f.path) })), false);
+  // 当前文件夹
+  const folderEl = document.getElementById('folder-list');
+  if (currentFilePath) {
+    const dir = currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
+    try {
+      const entries = await window.markpad.listDirectory(dir);
+      const mdFiles = entries.filter(e => !e.isDir);
+      if (!mdFiles.length) {
+        folderEl.innerHTML = '<div class="file-item" style="opacity:0.5;font-size:11px">此目录下没有 md 文件</div>';
+      } else {
+        renderFileSection('folder-list', mdFiles.map(f => ({ ...f, isFav: isFavorited(f.path) })), false);
+      }
+    } catch (err) {
+      folderEl.innerHTML = '<div class="file-item" style="opacity:0.5">无法读取目录</div>';
+    }
+  } else {
+    folderEl.innerHTML = '<div class="file-item" style="opacity:0.5;font-size:11px">打开文件后显示</div>';
+  }
+  // 同步顶部收藏按钮状态
+  updateFavoriteBtn();
+}
+
+function renderFileSection(containerId, files, isFavSection) {
+  const container = document.getElementById(containerId);
+  if (!files.length) {
+    container.innerHTML = `<div class="file-item" style="opacity:0.4;font-size:11px">${isFavSection ? '暂无收藏（点击文件右侧 ☆ 收藏）' : '暂无文件'}</div>`;
+    return;
+  }
+  container.innerHTML = files.map(f => {
+    const starOn = f.isFav;
+    const isCur = currentFilePath && f.path === currentFilePath;
+    // 星标图标：实心★=已收藏，空心☆=未收藏
+    const star = starOn ? '★' : '☆';
+    const starTitle = starOn ? '取消收藏' : '加入收藏';
+    return `<div class="file-item ${isCur ? 'current' : ''}" data-path="${escapeAttr(f.path)}" title="${escapeAttr(f.path)}">
+      <span class="fi-icon">${f.isDir ? '📁' : '📄'}</span>
+      <span class="fi-name">${escapeHtml(f.name)}</span>
+      <span class="fi-star ${starOn ? 'favorited' : ''}" data-action="fav" title="${starTitle}">${star}</span>
+    </div>`;
+  }).join('');
+
+  // 点击打开文件
+  container.querySelectorAll('.file-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-action="fav"]')) return;
+      const fp = el.dataset.path;
+      if (fp) window.markpad.openFileByPath(fp);
+    });
+  });
+  // 收藏星标切换
+  container.querySelectorAll('[data-action="fav"]').forEach(star => {
+    star.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fp = star.parentElement.dataset.path;
+      const name = star.parentElement.querySelector('.fi-name')?.textContent || fp.split('/').pop();
+      if (!fp) return;
+      const nowFav = toggleFavorite(fp, name);
+      showQuickToast(nowFav ? '★ 已加入收藏' : '已取消收藏');
+      // 整体刷新（让"收藏夹"区出现/消失该文件）
+      refreshFileList();
+    });
+  });
+}
+
+function escapeAttr(s) { return String(s).replace(/[&"'<>]/g, ''); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+}
+
+// 顶部"收藏当前文件"按钮状态同步
+function updateFavoriteBtn() {
+  const btn = document.getElementById('favorite-toggle');
+  if (!btn) return;
+  const fav = currentFilePath && isFavorited(currentFilePath);
+  btn.classList.toggle('favorited', !!fav);
+  btn.title = !currentFilePath
+    ? '请先打开一个文件'
+    : (fav ? '取消收藏（⌘D）' : '收藏当前文件（⌘D）');
+}
+
+// 初始化默认显示文件tab
+switchSidebarTab('files');
+
+// ========= 拖拽分隔条（大纲/编辑器/源码三栏可拖动改变大小） =========
+function initResizers() {
+  const outlineResizer = document.getElementById('outline-resizer');
+  const sourceResizer = document.getElementById('source-resizer');
+  const sourcePane = document.getElementById('source-pane');
+
+  let dragging = null;  // 'outline' | 'source'
+  let startX = 0;
+  let startW = 0;
+
+  function onDown(e, which) {
+    dragging = which;
+    startX = e.clientX;
+    const target = which === 'outline' ? outlineEl : sourcePane;
+    // 取实际渲染宽度（getBoundingClientRect 比 style.width 准，前者含 border/padding）
+    startW = target.getBoundingClientRect().width;
+    const resizer = which === 'outline' ? outlineResizer : sourceResizer;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    const delta = e.clientX - startX;
+    // 大纲向右拖 = 变宽，源码向右拖 = 变窄（源码在右边）
+    const newW = dragging === 'outline' ? startW + delta : startW - delta;
+    const clamped = Math.max(120, Math.min(520, newW));
+    const target = dragging === 'outline' ? outlineEl : sourcePane;
+    // 还原为纯数值（去掉可能存在的 px 后缀）
+    const num = Math.round(clamped);
+    target.style.width = num + 'px';
+    // 同时也存到 data 属性，方便 toggle 时恢复
+    target.dataset.userWidth = num;
+  }
+
+  function onUp() {
+    if (!dragging) return;
+    const resizer = dragging === 'outline' ? outlineResizer : sourceResizer;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    dragging = null;
+  }
+
+  outlineResizer.addEventListener('mousedown', (e) => onDown(e, 'outline'));
+  // 大纲收起时点击分隔条 = 展开大纲
+  outlineResizer.addEventListener('click', (e) => {
+    if (outlineEl.classList.contains('hidden')) {
+      toggleOutline();
+    }
+  });
+  sourceResizer.addEventListener('mousedown', (e) => onDown(e, 'source'));
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+
+initResizers();
 
 // ========= 源码面板 ↔ 渲染编辑器 双向同步 =========
 
@@ -386,20 +662,133 @@ systemDark.addEventListener('change', () => {
 function toggleSource() {
   sourceVisible = !sourceVisible;
   sourceEl.classList.toggle('hidden', !sourceVisible);
+  document.getElementById('source-resizer').classList.toggle('hidden', !sourceVisible);
   const btn = document.getElementById('source-toggle');
   if (btn) btn.classList.toggle('active', sourceVisible);
   if (sourceVisible) syncSourceFromVditor(true);
 }
 
+// ========= 专注模式：仅高亮当前段落，其余变暗 =========
+function toggleFocusMode() {
+  focusMode = !focusMode;
+  document.body.classList.toggle('focus-mode', focusMode);
+  if (focusMode) {
+    updateFocusActive();
+  } else {
+    // 清除所有高亮
+    document.querySelectorAll('.focus-active').forEach(el => el.classList.remove('focus-active'));
+  }
+}
+
+function updateFocusActive() {
+  if (!focusMode) return;
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const node = sel.getRangeAt(0).startContainer;
+  // 找最近的块级祖先（p, h1-h6, li, blockquote, pre 等）
+  const block = node.closest ? node.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, table, .vditor-ir__node') : null
+              || (node.nodeType === 3 ? node.parentElement : node);
+  if (!block) return;
+  document.querySelectorAll('.focus-active').forEach(el => el.classList.remove('focus-active'));
+  block.classList.add('focus-active');
+  // 也标记其父节点（比如 li 在 ul 里）
+  const parentBlock = block.closest('li, blockquote');
+  if (parentBlock) parentBlock.classList.add('focus-active');
+}
+
+// ========= 打字机模式：光标始终居中 =========
+let twTimer = null;
+function toggleTypewriterMode() {
+  typewriterMode = !typewriterMode;
+  if (typewriterMode) {
+    typewriterScroll();
+  }
+}
+
+function typewriterScroll() {
+  if (!typewriterMode || !vditorReady) return;
+  const scroller = document.querySelector('.vditor-ir pre.vditor-reset');
+  if (!scroller) return;
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  if (!range.collapsed) return; // 有选区时不滚动
+  const rect = range.getClientRects()[0];
+  if (!rect) return;
+  const scrollerRect = scroller.getBoundingClientRect();
+  // 目标：光标在视口 45% 位置
+  const targetRatio = 0.45;
+  const currentPos = rect.top - scrollerRect.top + scroller.scrollTop;
+  const targetPos = currentPos - scrollerRect.height * targetRatio;
+  if (Math.abs(scroller.scrollTop - targetPos) > 30) {
+    scroller.scrollTop = Math.max(0, targetPos);
+  }
+}
+
+// 专注模式 + 打字机模式 共享光标变化监听
+document.addEventListener('selectionchange', () => {
+  if (focusMode) {
+    // 节流：vditor 自身频繁操作 selection，用 rAF 避免卡顿
+    if (!focusMode._pending) {
+      focusMode._pending = true;
+      requestAnimationFrame(() => {
+        focusMode._pending = false;
+        updateFocusActive();
+      });
+    }
+  }
+  if (typewriterMode) {
+    clearTimeout(twTimer);
+    twTimer = setTimeout(typewriterScroll, 60);
+  }
+});
+
+// ========= 样式主题预设（GitHub/Night/Sepia/Slate） =========
+const STYLE_THEMES = {
+  default: { name: '默认' },
+  github:  { name: 'GitHub', base: 'light' },
+  night:   { name: 'Night', base: 'dark' },
+  sepia:   { name: 'Sepia', base: 'light' },
+  slate:   { name: 'Slate', base: 'dark' },
+};
+
+function setStyleTheme(name) {
+  if (!STYLE_THEMES[name]) return;
+  styleTheme = name;
+  document.body.setAttribute('data-style-theme', name);
+  // 切换基础亮暗（如果主题指定了 base）
+  const preset = STYLE_THEMES[name];
+  if (preset.base && themeMode !== preset.base) {
+    themeMode = preset.base;
+    darkMode = preset.base === 'dark';
+    applyThemeMode(false);
+  }
+  localStorage.setItem('markpad-style-theme', name);
+}
+
+function nextStyleTheme() {
+  const keys = Object.keys(STYLE_THEMES);
+  const idx = keys.indexOf(styleTheme);
+  setStyleTheme(keys[(idx + 1) % keys.length]);
+}
+
 // ============ IPC 事件绑定 ============
 
 window.markpad.onFileOpened(({ path, content }) => {
+  currentFilePath = path;
   loadContent(content);
   statusFile.textContent = path.split('/').pop();
   markDirty(false);
+  addRecentFile(path);
+  updateFavoriteBtn();
+  // 文件列表无论 tab 在哪都刷一下（用户切回 tab 时也是新的）
+  setTimeout(refreshFileList, 100);
+  // 大纲也刷新（基于新内容）
+  scheduleOutlineRefresh();
 });
 
 window.markpad.onFileNew(() => {
+  currentFilePath = null;
   loadContent('');
   statusFile.textContent = '未命名';
   markDirty(false);
@@ -410,7 +799,12 @@ window.markpad.onRequestSave(async ({ saveAs }) => {
   const res = await window.markpad.saveContent(content, saveAs);
   if (res.saved) {
     markDirty(false);
-    if (res.path) statusFile.textContent = res.path.split('/').pop();
+    if (res.path) {
+      currentFilePath = res.path;
+      statusFile.textContent = res.path.split('/').pop();
+      addRecentFile(res.path);
+      if (sidebarTab === 'files') refreshFileList();
+    }
   }
   return res;
 });
@@ -425,6 +819,16 @@ window.markpad.onToggleOutline(() => toggleOutline());
 window.markpad.onToggleSource(() => toggleSource());
 window.markpad.onToggleTheme(() => toggleTheme());
 window.markpad.onSetTheme((mode) => setTheme(mode));
+window.markpad.onToggleFocusMode(() => toggleFocusMode());
+window.markpad.onToggleTypewriterMode(() => toggleTypewriterMode());
+window.markpad.onNextStyleTheme(() => nextStyleTheme());
+window.markpad.onSetStyleTheme((name) => setStyleTheme(name));
+window.markpad.onQuickOpen(() => showQuickOpen());
+window.markpad.onToggleFavorite(() => {
+  if (!currentFilePath) return;
+  const nowFav = toggleFavorite(currentFilePath, currentFilePath.split('/').pop());
+  showQuickToast(nowFav ? '★ 已加入收藏' : '已取消收藏');
+});
 
 window.markpad.onConfirmClose(async () => {
   if (!isDirty) {
@@ -451,8 +855,177 @@ window.markpad.onConfirmClose(async () => {
   }
 });
 
-// 右上角主题切换按钮
-const themeToggleBtn = document.getElementById('theme-toggle');
+// ========= 文件管理：最近文件 + 收藏夹 + 快速打开（⌘P） =========
+const RECENT_KEY = 'markpad-recent-files';
+const FAV_KEY = 'markpad-favorites';
+const MAX_RECENT = 20;
+
+function getRecentFiles() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (_) { return []; }
+}
+function saveRecentFiles(list) {
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+}
+function addRecentFile(fp) {
+  if (!fp) return;
+  const list = getRecentFiles().filter(f => f.path !== fp);
+  list.unshift({ path: fp, name: fp.split('/').pop(), time: Date.now() });
+  if (list.length > MAX_RECENT) list.length = MAX_RECENT;
+  saveRecentFiles(list);
+}
+
+function getFavorites() {
+  try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch (_) { return []; }
+}
+function saveFavorites(list) {
+  localStorage.setItem(FAV_KEY, JSON.stringify(list));
+}
+function isFavorited(fp) { return getFavorites().some(f => f.path === fp); }
+function toggleFavorite(fp, name) {
+  if (!fp) return false;
+  const list = getFavorites();
+  const idx = list.findIndex(f => f.path === fp);
+  if (idx >= 0) { list.splice(idx, 1); saveFavorites(list); return false; }
+  else { list.push({ path: fp, name: name || fp.split('/').pop() }); saveFavorites(list); return true; }
+}
+
+// ========= 快速打开面板（⌘P） =========
+let quickOpenActive = false;
+let quickOpenIndex = 0;
+const qoOverlay = document.getElementById('quick-open-overlay');
+const qoInput = document.getElementById('quick-open-input');
+const qoResults = document.getElementById('quick-open-results');
+
+function showQuickOpen() {
+  quickOpenActive = true;
+  quickOpenIndex = 0;
+  if (qoOverlay) {
+    qoOverlay.classList.remove('hidden');
+    // 防御：如果 class 移除无效，直接设 style
+    if (qoOverlay.classList.contains('hidden')) {
+      qoOverlay.style.display = 'flex';
+    }
+  }
+  if (qoInput) {
+    qoInput.value = '';
+    qoInput.focus();
+  }
+  renderQuickResults('');
+}
+
+function hideQuickOpen() {
+  quickOpenActive = false;
+  if (qoOverlay) {
+    qoOverlay.classList.add('hidden');
+    qoOverlay.style.display = '';
+  }
+  if (qoInput) qoInput.value = '';
+}
+
+function renderQuickResults(query) {
+  const q = query.toLowerCase();
+  const items = [];
+  // 收藏文件
+  const favs = getFavorites().filter(f => !q || f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q));
+  if (favs.length) {
+    items.push({ type: 'section', label: '收藏夹' });
+    favs.forEach(f => items.push({ type: 'fav', ...f }));
+  }
+  // 最近文件
+  const recent = getRecentFiles().filter(f => !q || f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q));
+  if (recent.length) {
+    items.push({ type: 'section', label: '最近打开' });
+    recent.forEach(f => items.push({ type: 'recent', ...f }));
+  }
+
+  quickOpenIndex = 0;
+  qoResults.innerHTML = '';
+  if (!items.length) {
+    qoResults.innerHTML = '<div class="qoi-empty">没有匹配的文件</div>';
+    return;
+  }
+  items.forEach((item, i) => {
+    if (item.type === 'section') {
+      const div = document.createElement('div');
+      div.className = 'qoi-section';
+      div.textContent = item.label;
+      qoResults.appendChild(div);
+    } else {
+      const div = document.createElement('div');
+      div.className = 'quick-open-item';
+      div.dataset.idx = i;
+      // 短路径展示（去掉 /Users/xxx 前缀）
+      const shortPath = item.path.replace(/^\/Users\/[^/]+/, '~');
+      div.innerHTML = `<span class="qoi-name">${escapeHtml(item.name)}</span><span class="qoi-tag">${item.type === 'fav' ? '★' : ''}</span><span class="qoi-path">${escapeHtml(shortPath.replace(item.name, ''))}</span>`;
+      div.addEventListener('click', () => openQuickItem(item));
+      qoResults.appendChild(div);
+    }
+  });
+  highlightQuickItem();
+}
+
+function highlightQuickItem() {
+  const items = qoResults.querySelectorAll('.quick-open-item');
+  items.forEach((el, i) => {
+    const listIdx = Array.from(qoResults.querySelectorAll('.quick-open-item')).indexOf(el);
+    el.classList.toggle('active', listIdx === quickOpenIndex);
+  });
+}
+
+function openQuickItem(item) {
+  if (!item || item.type === 'section') return;
+  hideQuickOpen();
+  window.markpad.openFileByPath(item.path);
+}
+
+qoInput.addEventListener('input', () => renderQuickResults(qoInput.value));
+qoInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { hideQuickOpen(); return; }
+  const items = qoResults.querySelectorAll('.quick-open-item');
+  if (!items.length) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    quickOpenIndex = Math.min(quickOpenIndex + 1, items.length - 1);
+    highlightQuickItem();
+    items[quickOpenIndex]?.scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    quickOpenIndex = Math.max(quickOpenIndex - 1, 0);
+    highlightQuickItem();
+    items[quickOpenIndex]?.scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const allData = [];
+    getFavorites().forEach(f => allData.push({ type: 'fav', ...f }));
+    getRecentFiles().forEach(f => allData.push({ type: 'recent', ...f }));
+    const q = qoInput.value.toLowerCase();
+    const filtered = allData.filter(f => !q || f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q));
+    if (filtered[quickOpenIndex]) openQuickItem(filtered[quickOpenIndex]);
+  }
+});
+
+qoOverlay.addEventListener('click', (e) => { if (e.target === qoOverlay) hideQuickOpen(); });
+
+// 全局快捷键 ⌘P（capture 阶段拦截，防止被 vditor contenteditable 吞掉）
+window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+    e.preventDefault();
+    e.stopPropagation();
+    showQuickOpen();
+  }
+}, true);
+
+// ESC 关闭全局拦截
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && quickOpenActive) {
+    if (!qoInput.matches(':focus')) hideQuickOpen();
+  }
+}, true);
+
+// escapeHtml 已在上方定义
+
+// 右上角主题切换按钮（用 var 是为了避免 TDZ：updateThemeBtnTitle 可能在声明前被 vditor after 回调调用）
+var themeToggleBtn = document.getElementById('theme-toggle');
 function updateThemeBtnTitle() {
   if (!themeToggleBtn) return;
   const cur  = { light:'亮色', dark:'暗色', system:'跟随系统' }[themeMode] || '';
@@ -465,6 +1038,41 @@ if (themeToggleBtn) {
     toggleTheme();
   });
 }
+
+// 右上角快速打开按钮
+const quickOpenBtn = document.getElementById('quick-open-btn');
+if (quickOpenBtn) {
+  quickOpenBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    showQuickOpen();
+  });
+}
+
+// 顶部"收藏当前文件"按钮
+const favBtn = document.getElementById('favorite-toggle');
+if (favBtn) {
+  favBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!currentFilePath) {
+      showQuickToast('请先打开一个文件');
+      return;
+    }
+    const name = currentFilePath.split('/').pop();
+    const nowFav = toggleFavorite(currentFilePath, name);
+    showQuickToast(nowFav ? '★ 已加入收藏' : '已取消收藏');
+    updateFavoriteBtn();
+    if (sidebarTab === 'files') refreshFileList();
+  });
+}
+
+// ⌘D 收藏当前文件
+window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
+    e.preventDefault();
+    e.stopPropagation();
+    favBtn && favBtn.click();
+  }
+}, true);
 
 // 右上角源码切换按钮
 const sourceToggleBtn = document.getElementById('source-toggle');

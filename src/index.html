@@ -10,6 +10,16 @@
 <body>
   <!-- 顶部拖拽区（macOS 红绿灯下方留白） -->
   <div id="drag-bar">
+    <button id="quick-open-btn" type="button" title="快速打开（⌘P）" aria-label="快速打开">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+    </button>
+    <button id="favorite-toggle" type="button" title="收藏当前文件（⌘D）" aria-label="收藏当前文件">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+    </button>
     <button id="source-toggle" type="button" title="切换源码面板（⌘E）" aria-label="切换源码面板">
       <!-- 两个竖条图标：表示双栏 -->
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -29,14 +39,47 @@
   <div id="app">
     <!-- 大纲侧栏 -->
     <aside id="outline">
-      <div class="outline-title">大纲</div>
-      <div id="outline-content"></div>
+      <div class="outline-title">
+        <div class="outline-tabs">
+          <button class="outline-tab active" data-tab="files" title="文件管理">📁 文件</button>
+          <button class="outline-tab" data-tab="outline" title="大纲导航">📑 大纲</button>
+        </div>
+        <button id="outline-toggle" type="button" title="收起侧栏（⌘\）" aria-label="收起侧栏">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
+      <!-- 大纲内容（自绘树，支持多级折叠+缩进） -->
+      <div id="outline-content" class="hidden">
+        <div id="outline-tree" class="outline-tree"></div>
+        <div id="outline-empty" class="outline-empty">暂无标题，先在文档中添加 # / ## 标题</div>
+      </div>
+      <!-- 文件管理内容 -->
+      <div id="files-content">
+        <div class="files-section">
+          <div class="files-section-title">⭐ 收藏夹</div>
+          <div id="fav-list" class="files-list"></div>
+        </div>
+        <div class="files-section">
+          <div class="files-section-title">🕐 最近打开</div>
+          <div id="recent-list" class="files-list"></div>
+        </div>
+        <div class="files-section">
+          <div class="files-section-title">📂 当前文件夹</div>
+          <div id="folder-list" class="files-list"></div>
+        </div>
+      </div>
     </aside>
+
+    <!-- 大纲 ↔ 编辑器 拖拽分隔条 -->
+    <div id="outline-resizer" class="resizer"></div>
 
     <!-- 编辑器（中间：WYSIWYG 渲染区） -->
     <main id="editor-wrap">
       <div id="vditor"></div>
     </main>
+
+    <!-- 编辑器 ↔ 源码 拖拽分隔条 -->
+    <div id="source-resizer" class="resizer hidden"></div>
 
     <!-- 右侧源码面板（可收起） -->
     <aside id="source-pane" class="hidden">
@@ -57,6 +100,14 @@
   </footer>
 
   <script src="../node_modules/vditor/dist/index.min.js"></script>
+  <!-- 快速打开模态框（⌘P）—— 必须在 renderer.js 之前出现在 DOM 中 -->
+  <div id="quick-open-overlay" class="hidden">
+    <div id="quick-open-panel">
+      <input id="quick-open-input" type="text" placeholder="搜索文件名打开…" spellcheck="false" autocomplete="off">
+      <div id="quick-open-results"></div>
+    </div>
+  </div>
+
   <script src="renderer.js"></script>
 </body>
 </html>

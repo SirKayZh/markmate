@@ -72,6 +72,7 @@ html, body {
 
 #theme-toggle { right: 10px; }
 #source-toggle { right: 40px; }
+#quick-open-btn { right: 70px; }
 #source-toggle.active { color: var(--accent); background: rgba(76, 139, 245, 0.12); }
 
 /* 用透明度区分三种模式：跟随系统稍微淡一些以示"自动" */
@@ -90,21 +91,111 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   border-right: 1px solid var(--border);
   background: var(--bg-soft);
   overflow-y: auto;
-  padding: 12px 0;
-  transition: margin-left 0.18s ease;
+  padding: 12px 0 12px 0;
+  transition: width 0.15s ease, opacity 0.15s ease;
+}
+#outline.hidden {
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  border-right: none;
 }
 
-#outline.hidden {
-  margin-left: -240px;
+/* 大纲收起时，左侧留一条可点击条 */
+#outline.hidden ~ #outline-resizer {
+  display: block;
+  width: 14px;
+  cursor: pointer;
+  background: var(--border);
+  opacity: 0.35;
+  transition: opacity 0.15s, background 0.15s;
+}
+#outline.hidden ~ #outline-resizer:hover {
+  background: var(--accent);
+  opacity: 1;
+}
+/* 小箭头始终显示（半透明），hover时变亮 */
+#outline.hidden ~ #outline-resizer::after {
+  content: '▶';
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  text-align: center;
+  color: var(--text);
+  opacity: 0.55;
+  pointer-events: none;
+  line-height: 1;
+}
+#outline.hidden ~ #outline-resizer:hover::after {
+  opacity: 1;
 }
 
 .outline-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 12px;
   font-weight: 600;
   color: var(--status-text);
-  padding: 0 16px 8px;
+  padding: 0 6px 6px 6px;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
+/* 大纲/文件 tab 切换 */
+.outline-tabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+}
+.outline-tab {
+  padding: 3px 8px;
+  font-size: 11px;
+  border: none;
+  background: transparent;
+  color: var(--status-text);
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.outline-tab:hover { background: rgba(127,127,127,0.12); color: var(--text); }
+.outline-tab.active { background: var(--accent); color: #fff; }
+#outline-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  border: none; background: transparent;
+  color: var(--status-text); cursor: pointer;
+  border-radius: 4px; padding: 0; flex-shrink: 0;
+}
+#outline-toggle:hover { background: rgba(127,127,127,0.15); color: var(--text); }
+
+/* 文件管理列表 */
+#files-content { padding: 0 8px; overflow-y: auto; flex: 1; }
+#files-content.hidden { display: none; }
+.files-section { margin-bottom: 12px; }
+.files-section-title {
+  font-size: 10px; font-weight: 600; color: var(--status-text);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 4px 6px 2px;
+}
+.files-list {
+  display: flex; flex-direction: column;
+}
+.file-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 6px; font-size: 12px; cursor: pointer;
+  border-radius: 4px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.file-item:hover { background: rgba(127,127,127,0.12); }
+.file-item .fi-icon { flex-shrink: 0; font-size: 12px; opacity: 0.6; }
+.file-item .fi-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.file-item .fi-star { flex-shrink: 0; font-size: 12px; color: var(--accent); cursor: pointer; opacity: 0.5; }
+.file-item .fi-star:hover { opacity: 1; }
+.file-item .fi-star.favorited { opacity: 1; }
 
 /* vditor 自带 outline 的样式适配（我们自己搬进来，不自己渲染） */
 #outline-content .vditor-outline {
@@ -163,6 +254,24 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
 
 #outline-content [data-target-id]:hover {
   background: rgba(76, 139, 245, 0.12);
+}
+
+/* 拖拽分隔条（大纲↔编辑器、编辑器↔源码） */
+.resizer {
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.12s ease;
+  position: relative;
+  z-index: 10;
+}
+.resizer:hover,
+.resizer.dragging {
+  background: var(--accent);
+}
+.resizer.hidden {
+  display: none;
 }
 
 /* 编辑器区域 */
@@ -287,11 +396,14 @@ body.dark .vditor-reset mark {
   background: var(--source-bg);
   display: flex;
   flex-direction: column;
-  transition: margin-right 0.18s ease;
+  transition: width 0.15s ease, opacity 0.15s ease;
+  overflow: hidden;
 }
 
 #source-pane.hidden {
-  margin-right: -420px;
+  width: 0;
+  border-left: none;
+  opacity: 0;
 }
 
 .source-title {
@@ -378,3 +490,213 @@ body.drag-over::after {
   border: 3px dashed var(--accent);
   pointer-events: none;
 }
+
+/* ========= 专注模式：仅高亮当前段落 ========= */
+body.focus-mode .vditor-reset > * {
+  opacity: 0.28;
+  transition: opacity 0.25s ease;
+}
+body.focus-mode .vditor-reset > .focus-active,
+body.focus-mode .vditor-reset > .focus-active *,
+body.focus-mode .vditor-reset h1,
+body.focus-mode .vditor-reset h2,
+body.focus-mode .vditor-reset h3,
+body.focus-mode .vditor-reset h4,
+body.focus-mode .vditor-reset h5,
+body.focus-mode .vditor-reset h6 {
+  opacity: 1 !important;
+}
+/* 专注模式下标题始终可见（它们是导航锚点） */
+body.focus-mode .vditor-reset h1:not(.focus-active),
+body.focus-mode .vditor-reset h2:not(.focus-active),
+body.focus-mode .vditor-reset h3:not(.focus-active),
+body.focus-mode .vditor-reset h4:not(.focus-active),
+body.focus-mode .vditor-reset h5:not(.focus-active),
+body.focus-mode .vditor-reset h6:not(.focus-active) {
+  opacity: 0.5 !important;
+}
+
+/* ========= 样式主题预设 ========= */
+body[data-style-theme="github"] {
+  --bg: #f6f8fa;
+  --bg-soft: #ffffff;
+  --text: #24292f;
+  --border: #d0d7de;
+  --accent: #0969da;
+  --status-bg: #f6f8fa;
+  --status-text: #656d76;
+  --source-bg: #ffffff;
+}
+
+body[data-style-theme="night"] {
+  --bg: #0d1117;
+  --bg-soft: #161b22;
+  --text: #c9d1d9;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --status-bg: #0d1117;
+  --status-text: #8b949e;
+  --source-bg: #0d1117;
+}
+
+body[data-style-theme="sepia"] {
+  --bg: #fbf0d9;
+  --bg-soft: #f4e8c8;
+  --text: #4e3b2c;
+  --border: #d6c8a8;
+  --accent: #8b5e3c;
+  --status-bg: #f4e8c8;
+  --status-text: #8a7560;
+  --source-bg: #fbf0d9;
+}
+
+body[data-style-theme="slate"] {
+  --bg: #1e2a3a;
+  --bg-soft: #243447;
+  --text: #c0ccda;
+  --border: #334455;
+  --accent: #63b3ed;
+  --status-bg: #1e2a3a;
+  --status-text: #718096;
+  --source-bg: #1e2a3a;
+}
+
+/* ========= 快速打开面板（⌘P） ========= */
+#quick-open-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 18vh;
+}
+#quick-open-overlay.hidden { display: none; }
+
+#quick-open-panel {
+  width: 560px;
+  max-height: 60vh;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#quick-open-input {
+  width: 100%;
+  padding: 14px 18px;
+  font-size: 16px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+#quick-open-input::placeholder { color: var(--status-text); }
+
+#quick-open-results {
+  overflow-y: auto;
+  max-height: 45vh;
+}
+.quick-open-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 18px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  transition: background 0.08s;
+}
+.quick-open-item:hover,
+.quick-open-item.active {
+  background: var(--accent);
+  color: #fff;
+}
+.quick-open-item .qoi-name { font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-open-item .qoi-path { font-size: 11px; color: var(--status-text); margin-left: 12px; flex-shrink: 0; white-space: nowrap; }
+.quick-open-item:hover .qoi-path,
+.quick-open-item.active .qoi-path { color: rgba(255,255,255,0.7); }
+.quick-open-item .qoi-tag { font-size: 10px; background: var(--bg-soft); color: var(--status-text); padding: 1px 6px; border-radius: 3px; margin-left: 8px; flex-shrink: 0; }
+.quick-open-item:hover .qoi-tag,
+.quick-open-item.active .qoi-tag { background: rgba(255,255,255,0.2); color: #fff; }
+.qoi-empty { padding: 24px; text-align: center; color: var(--status-text); font-size: 13px; }
+.qoi-section { font-size: 11px; font-weight: 600; color: var(--status-text); padding: 8px 18px 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ============ 自绘大纲树（v1.10+） ============ */
+.outline-tree { padding: 4px 0 12px; }
+.outline-empty { padding: 24px 16px; color: var(--status-text); font-size: 12px; text-align: center; opacity: 0.7; }
+.ol-item {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 8px 4px 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-radius: 4px;
+  margin: 1px 4px;
+}
+.ol-item:hover { background: var(--hover); }
+.ol-item.active { background: rgba(76, 139, 245, 0.18); color: var(--accent); font-weight: 500; }
+.ol-chevron {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px;
+  font-size: 9px;
+  color: var(--status-text);
+  flex-shrink: 0;
+  transition: transform 0.15s;
+  cursor: pointer;
+}
+.ol-chevron.collapsed { transform: rotate(-90deg); }
+.ol-chevron.ol-leaf { visibility: hidden; }
+.ol-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+/* 按层级字号微调，让多级一眼可辨 */
+.ol-lv-1 .ol-text { font-weight: 600; font-size: 13px; }
+.ol-lv-2 .ol-text { font-weight: 500; font-size: 12.5px; }
+.ol-lv-3 .ol-text, .ol-lv-4 .ol-text, .ol-lv-5 .ol-text, .ol-lv-6 .ol-text {
+  font-size: 12px; opacity: 0.85;
+}
+
+/* ============ 文件列表 当前文件 高亮 ============ */
+.file-item.current {
+  background: rgba(76, 139, 245, 0.14);
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+}
+.file-item.current .fi-name { font-weight: 500; color: var(--accent); }
+
+/* ============ 文件列表 星标按钮（空心★/实心★ 共用，靠 color 区分） ============ */
+.fi-star {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 14px;
+  color: var(--status-text);
+  opacity: 0.4;
+  transition: opacity 0.15s, color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+.fi-star:hover { opacity: 1; transform: scale(1.15); }
+.fi-star.favorited { color: #f5a623; opacity: 1; }
+
+/* ============ 顶部"收藏当前文件"按钮 ============ */
+#favorite-toggle {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  top: 8px; right: 100px;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer;
+  border-radius: 6px;
+  color: var(--status-text);
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+#favorite-toggle:hover { background: var(--hover); opacity: 1; }
+#favorite-toggle.favorited { color: #f5a623; opacity: 1; }
+#favorite-toggle.favorited svg { fill: #f5a623; }
