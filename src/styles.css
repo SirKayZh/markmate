@@ -700,3 +700,69 @@ body[data-style-theme="slate"] {
 #favorite-toggle:hover { background: var(--hover); opacity: 1; }
 #favorite-toggle.favorited { color: #f5a623; opacity: 1; }
 #favorite-toggle.favorited svg { fill: #f5a623; }
+
+/* ============ 文件管理：分区折叠 + 搜索 + 数量 ============ */
+.files-search { padding: 8px 8px 4px; }
+#files-search-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+#files-search-input:focus { border-color: var(--accent); }
+#files-search-input::placeholder { color: var(--status-text); opacity: 0.6; }
+/* 去掉 search input 自带的 X 清除按钮（macOS 上不好看） */
+#files-search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+.files-section-title {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.files-section-title:hover { color: var(--accent); }
+.fs-chevron {
+  display: inline-block;
+  width: 12px;
+  font-size: 10px;
+  color: var(--status-text);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.fs-label { flex: 1; }
+.fs-count {
+  font-size: 10px;
+  color: var(--status-text);
+  background: var(--bg-soft);
+  padding: 1px 6px;
+  border-radius: 8px;
+  min-width: 16px;
+  text-align: center;
+}
+.files-section.collapsed .files-list { display: none; }
+.files-section.collapsed .fs-count { opacity: 0.5; }
+
+/* ============ 主题切换 hover 气泡 ============ */
+#mp-theme-tip {
+  position: fixed;
+  background: rgba(28, 30, 38, 0.95);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.12s, transform 0.12s;
+  z-index: 9999;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+#mp-theme-tip.show { opacity: 1; transform: translateY(0); }
+body[data-dark="true"] #mp-theme-tip { background: rgba(245, 246, 250, 0.95); color: #1c1e26; }

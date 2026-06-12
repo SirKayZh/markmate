@@ -55,16 +55,26 @@
       </div>
       <!-- 文件管理内容 -->
       <div id="files-content">
-        <div class="files-section">
-          <div class="files-section-title">⭐ 收藏夹</div>
+        <!-- 文件管理内的搜索框 -->
+        <div class="files-search">
+          <input id="files-search-input" type="search" placeholder="🔍 搜索文件名…" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="files-section" data-section="fav">
+          <div class="files-section-title" data-toggle="fav">
+            <span class="fs-chevron">▾</span><span class="fs-label">⭐ 收藏夹</span><span class="fs-count" id="fav-count"></span>
+          </div>
           <div id="fav-list" class="files-list"></div>
         </div>
-        <div class="files-section">
-          <div class="files-section-title">🕐 最近打开</div>
+        <div class="files-section" data-section="recent">
+          <div class="files-section-title" data-toggle="recent">
+            <span class="fs-chevron">▾</span><span class="fs-label">🕐 最近打开</span><span class="fs-count" id="recent-count"></span>
+          </div>
           <div id="recent-list" class="files-list"></div>
         </div>
-        <div class="files-section">
-          <div class="files-section-title">📂 当前文件夹</div>
+        <div class="files-section" data-section="folder">
+          <div class="files-section-title" data-toggle="folder">
+            <span class="fs-chevron">▾</span><span class="fs-label">📂 当前文件夹</span><span class="fs-count" id="folder-count"></span>
+          </div>
           <div id="folder-list" class="files-list"></div>
         </div>
       </div>

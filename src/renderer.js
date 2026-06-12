@@ -418,34 +418,98 @@ document.querySelectorAll('.outline-tab').forEach(btn => {
   btn.addEventListener('click', () => switchSidebarTab(btn.dataset.tab));
 });
 
+// ========= 文件管理：分区折叠 + 关键词搜索 =========
+const FILES_COLLAPSE_KEY = 'markpad-files-collapsed-sections';
+let filesSearchQuery = '';
+
+function getCollapsedSections() {
+  try { return new Set(JSON.parse(localStorage.getItem(FILES_COLLAPSE_KEY) || '[]')); }
+  catch (_) { return new Set(); }
+}
+function saveCollapsedSections(set) {
+  localStorage.setItem(FILES_COLLAPSE_KEY, JSON.stringify([...set]));
+}
+function isSectionCollapsed(name) { return getCollapsedSections().has(name); }
+function toggleSection(name) {
+  const c = getCollapsedSections();
+  if (c.has(name)) c.delete(name); else c.add(name);
+  saveCollapsedSections(c);
+  applySectionCollapsed();
+}
+function applySectionCollapsed() {
+  document.querySelectorAll('#files-content .files-section').forEach(sec => {
+    const name = sec.dataset.section;
+    const collapsed = isSectionCollapsed(name);
+    sec.classList.toggle('collapsed', collapsed);
+    const chev = sec.querySelector('.fs-chevron');
+    if (chev) chev.textContent = collapsed ? '▸' : '▾';
+  });
+}
+// 标题点击折叠/展开
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-toggle]');
+  if (!t || !t.classList.contains('files-section-title')) return;
+  toggleSection(t.dataset.toggle);
+}, false);
+// 搜索框输入
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.id === 'files-search-input') {
+    filesSearchQuery = e.target.value.trim().toLowerCase();
+    refreshFileList();
+  }
+});
+// ESC 清空搜索
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && e.target && e.target.id === 'files-search-input') {
+    e.target.value = '';
+    filesSearchQuery = '';
+    refreshFileList();
+  }
+});
 // ========= 文件列表渲染 =========
+function matchQuery(file) {
+  if (!filesSearchQuery) return true;
+  const q = filesSearchQuery;
+  return (file.name || '').toLowerCase().includes(q) || (file.path || '').toLowerCase().includes(q);
+}
+
 async function refreshFileList() {
   // 收藏夹
-  const favs = getFavorites();
+  const favs = getFavorites().filter(matchQuery);
   renderFileSection('fav-list', favs.map(f => ({ ...f, isFav: true })), true);
+  const favCountEl = document.getElementById('fav-count');
+  if (favCountEl) favCountEl.textContent = favs.length ? favs.length : '';
   // 最近文件
-  const recent = getRecentFiles();
+  const recent = getRecentFiles().filter(matchQuery);
   renderFileSection('recent-list', recent.map(f => ({ ...f, isFav: isFavorited(f.path) })), false);
+  const recentCountEl = document.getElementById('recent-count');
+  if (recentCountEl) recentCountEl.textContent = recent.length ? recent.length : '';
   // 当前文件夹
   const folderEl = document.getElementById('folder-list');
+  const folderCountEl = document.getElementById('folder-count');
   if (currentFilePath) {
     const dir = currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
     try {
       const entries = await window.markpad.listDirectory(dir);
-      const mdFiles = entries.filter(e => !e.isDir);
+      const mdFiles = entries.filter(e => !e.isDir).filter(matchQuery);
+      if (folderCountEl) folderCountEl.textContent = mdFiles.length ? mdFiles.length : '';
       if (!mdFiles.length) {
-        folderEl.innerHTML = '<div class="file-item" style="opacity:0.5;font-size:11px">此目录下没有 md 文件</div>';
+        folderEl.innerHTML = `<div class="file-item" style="opacity:0.5;font-size:11px">${filesSearchQuery ? '没有匹配的文件' : '此目录下没有 md 文件'}</div>`;
       } else {
         renderFileSection('folder-list', mdFiles.map(f => ({ ...f, isFav: isFavorited(f.path) })), false);
       }
     } catch (err) {
       folderEl.innerHTML = '<div class="file-item" style="opacity:0.5">无法读取目录</div>';
+      if (folderCountEl) folderCountEl.textContent = '';
     }
   } else {
     folderEl.innerHTML = '<div class="file-item" style="opacity:0.5;font-size:11px">打开文件后显示</div>';
+    if (folderCountEl) folderCountEl.textContent = '';
   }
   // 同步顶部收藏按钮状态
   updateFavoriteBtn();
+  // 应用分区折叠状态（首次渲染或刷新后都要应用）
+  applySectionCollapsed();
 }
 
 function renderFileSection(containerId, files, isFavSection) {
@@ -1028,15 +1092,42 @@ window.addEventListener('keydown', (e) => {
 var themeToggleBtn = document.getElementById('theme-toggle');
 function updateThemeBtnTitle() {
   if (!themeToggleBtn) return;
-  const cur  = { light:'亮色', dark:'暗色', system:'跟随系统' }[themeMode] || '';
+  const cur  = { light:'☀️ 亮色', dark:'🌙 暗色', system:'💻 跟随系统' }[themeMode] || '';
   const next = { light:'暗色', dark:'跟随系统', system:'亮色' }[themeMode] || '主题';
-  themeToggleBtn.title = `当前：${cur} · 点击切到 ${next}（⌘/）`;
+  // 同时设置 title（系统 tooltip 兜底）和 data-tip（自绘气泡）
+  const tip = `当前：${cur} · 点击切到 ${next}（⌘/）`;
+  themeToggleBtn.title = tip;
+  themeToggleBtn.setAttribute('data-tip', tip);
 }
 if (themeToggleBtn) {
   themeToggleBtn.addEventListener('click', (e) => {
     e.preventDefault();
     toggleTheme();
   });
+  // 自绘 hover 气泡，比系统 title 反应快
+  themeToggleBtn.addEventListener('mouseenter', () => {
+    showThemeTip(themeToggleBtn);
+  });
+  themeToggleBtn.addEventListener('mouseleave', hideThemeTip);
+}
+
+let themeTipEl = null;
+function showThemeTip(anchor) {
+  const cur  = { light:'☀️ 亮色', dark:'🌙 暗色', system:'💻 跟随系统（' + (systemDark.matches ? '暗' : '亮') + '色）' }[themeMode] || '';
+  if (!themeTipEl) {
+    themeTipEl = document.createElement('div');
+    themeTipEl.id = 'mp-theme-tip';
+    document.body.appendChild(themeTipEl);
+  }
+  themeTipEl.textContent = '当前：' + cur;
+  themeTipEl.classList.add('show');
+  // 定位到按钮下方
+  const r = anchor.getBoundingClientRect();
+  themeTipEl.style.right = (window.innerWidth - r.right) + 'px';
+  themeTipEl.style.top = (r.bottom + 6) + 'px';
+}
+function hideThemeTip() {
+  themeTipEl && themeTipEl.classList.remove('show');
 }
 
 // 右上角快速打开按钮
