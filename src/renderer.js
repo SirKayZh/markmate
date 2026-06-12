@@ -420,10 +420,19 @@ document.querySelectorAll('.outline-tab').forEach(btn => {
 
 // ========= 文件管理：分区折叠 + 关键词搜索 =========
 const FILES_COLLAPSE_KEY = 'markpad-files-collapsed-sections';
+const FILES_COLLAPSE_INIT_KEY = 'markpad-files-collapsed-initialized';
 let filesSearchQuery = '';
 
 function getCollapsedSections() {
-  try { return new Set(JSON.parse(localStorage.getItem(FILES_COLLAPSE_KEY) || '[]')); }
+  try {
+    // 首次启动：默认折叠"当前文件夹"分区，避免在用户没切到该分区前就触发 macOS TCC 桌面/下载/文稿等受保护目录的权限弹窗
+    if (!localStorage.getItem(FILES_COLLAPSE_INIT_KEY)) {
+      localStorage.setItem(FILES_COLLAPSE_INIT_KEY, '1');
+      localStorage.setItem(FILES_COLLAPSE_KEY, JSON.stringify(['folder']));
+      return new Set(['folder']);
+    }
+    return new Set(JSON.parse(localStorage.getItem(FILES_COLLAPSE_KEY) || '[]'));
+  }
   catch (_) { return new Set(); }
 }
 function saveCollapsedSections(set) {
@@ -432,9 +441,14 @@ function saveCollapsedSections(set) {
 function isSectionCollapsed(name) { return getCollapsedSections().has(name); }
 function toggleSection(name) {
   const c = getCollapsedSections();
-  if (c.has(name)) c.delete(name); else c.add(name);
+  const wasCollapsed = c.has(name);
+  if (wasCollapsed) c.delete(name); else c.add(name);
   saveCollapsedSections(c);
   applySectionCollapsed();
+  // 展开"当前文件夹"分区时，按需 readdir（首次会触发系统权限询问，但这是用户主动行为）
+  if (name === 'folder' && wasCollapsed && currentFilePath) {
+    refreshFileList();
+  }
 }
 function applySectionCollapsed() {
   document.querySelectorAll('#files-content .files-section').forEach(sec => {
@@ -484,10 +498,17 @@ async function refreshFileList() {
   renderFileSection('recent-list', recent.map(f => ({ ...f, isFav: isFavorited(f.path) })), false);
   const recentCountEl = document.getElementById('recent-count');
   if (recentCountEl) recentCountEl.textContent = recent.length ? recent.length : '';
-  // 当前文件夹
+  // 当前文件夹：仅在该分区展开（未折叠）且确实有文件时才主动 readdir，避免触发 macOS TCC 桌面授权弹窗
   const folderEl = document.getElementById('folder-list');
   const folderCountEl = document.getElementById('folder-count');
-  if (currentFilePath) {
+  if (!currentFilePath) {
+    folderEl.innerHTML = '<div class="file-item" style="opacity:0.5;font-size:11px">打开文件后显示</div>';
+    if (folderCountEl) folderCountEl.textContent = '';
+  } else if (isSectionCollapsed('folder')) {
+    // 分区已折叠：不读盘，避免触发系统权限弹窗。展开时再 readdir
+    folderEl.innerHTML = '<div class="file-item" style="opacity:0.5;font-size:11px">展开后加载同目录文件…</div>';
+    if (folderCountEl) folderCountEl.textContent = '';
+  } else {
     const dir = currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
     try {
       const entries = await window.markpad.listDirectory(dir);
@@ -502,9 +523,6 @@ async function refreshFileList() {
       folderEl.innerHTML = '<div class="file-item" style="opacity:0.5">无法读取目录</div>';
       if (folderCountEl) folderCountEl.textContent = '';
     }
-  } else {
-    folderEl.innerHTML = '<div class="file-item" style="opacity:0.5;font-size:11px">打开文件后显示</div>';
-    if (folderCountEl) folderCountEl.textContent = '';
   }
   // 同步顶部收藏按钮状态
   updateFavoriteBtn();
