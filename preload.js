@@ -32,11 +32,19 @@ contextBridge.exposeInMainWorld('markpad', {
   // 文件管理
   onQuickOpen: (cb) => ipcRenderer.on('quick-open', () => cb()),
   onToggleFavorite: (cb) => ipcRenderer.on('toggle-favorite', () => cb()),
+  // 内容搜索 / 版本历史
+  onShowFind: (cb) => ipcRenderer.on('show-find', () => cb()),
+  onShowVersions: (cb) => ipcRenderer.on('show-versions', () => cb()),
   // 关闭前主进程问询
   onConfirmClose: (cb) => ipcRenderer.on('confirm-close', () => cb()),
 
   // 渲染进程 -> 主进程
   saveContent: (content, saveAs) => ipcRenderer.invoke('save-content', { content, saveAs }),
+  autoSave: (content) => ipcRenderer.invoke('auto-save', { content }),
+  listVersions: (filePath) => ipcRenderer.invoke('list-versions', { filePath }),
+  readVersion: (versionPath) => ipcRenderer.invoke('read-version', { versionPath }),
+  checkDraft: () => ipcRenderer.invoke('check-draft'),
+  discardDraft: (draftPath) => ipcRenderer.invoke('discard-draft', { draftPath }),
   exportHtml: (html) => ipcRenderer.invoke('export-html', { html }),
   setDirty: (dirty) => ipcRenderer.send('set-dirty', dirty),
   openDroppedFile: (filePath) => ipcRenderer.send('open-dropped-file', filePath),

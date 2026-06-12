@@ -10,7 +10,7 @@
 <body>
   <!-- 顶部拖拽区（macOS 红绿灯下方留白） -->
   <div id="drag-bar">
-    <button id="quick-open-btn" type="button" title="快速打开（⌘P）" aria-label="快速打开">
+    <button id="find-btn" type="button" title="文档内搜索（⌘F）" aria-label="文档内搜索">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
@@ -105,17 +105,53 @@
   <footer id="statusbar">
     <span id="status-file">未命名</span>
     <span class="spacer"></span>
+    <span id="status-autosave"></span>
     <span id="status-words">0 字</span>
     <span id="status-cursor">行 1, 列 1</span>
   </footer>
 
   <script src="../node_modules/vditor/dist/index.min.js"></script>
-  <!-- 快速打开模态框（⌘P）—— 必须在 renderer.js 之前出现在 DOM 中 -->
+  <!-- 必须在 renderer.js 之前 -->
+  <!-- 快速打开模态框（⌘P） -->
   <div id="quick-open-overlay" class="hidden">
     <div id="quick-open-panel">
       <input id="quick-open-input" type="text" placeholder="搜索文件名打开…" spellcheck="false" autocomplete="off">
       <div id="quick-open-results"></div>
     </div>
+  </div>
+  <!-- 文档内搜索浮层（⌘F） -->
+  <div id="find-bar" class="hidden">
+    <input id="find-input" type="text" placeholder="在文档中搜索…" spellcheck="false" autocomplete="off">
+    <span id="find-count">0/0</span>
+    <button id="find-prev" type="button" title="上一个（⇧Enter）" aria-label="上一个">↑</button>
+    <button id="find-next" type="button" title="下一个（Enter）" aria-label="下一个">↓</button>
+    <button id="find-close" type="button" title="关闭（Esc）" aria-label="关闭">×</button>
+  </div>
+  <!-- 历史版本面板 -->
+  <div id="versions-overlay" class="hidden">
+    <div id="versions-panel">
+      <div class="versions-head">
+        <span>历史版本</span>
+        <button id="versions-close" type="button">×</button>
+      </div>
+      <div class="versions-body">
+        <div id="versions-list"></div>
+        <div id="versions-preview">
+          <div id="versions-preview-meta"></div>
+          <pre id="versions-preview-content"></pre>
+          <div class="versions-actions">
+            <button id="versions-restore" type="button" disabled>恢复到这个版本</button>
+            <button id="versions-copy" type="button" disabled>复制内容</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- 草稿恢复提示 -->
+  <div id="draft-banner" class="hidden">
+    <span>检测到上次未保存的草稿</span>
+    <button id="draft-restore" type="button">恢复</button>
+    <button id="draft-discard" type="button">忽略</button>
   </div>
 
   <script src="renderer.js"></script>

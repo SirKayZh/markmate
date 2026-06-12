@@ -638,6 +638,43 @@ initResizers();
 function markDirty(dirty) {
   isDirty = dirty;
   window.markpad.setDirty(dirty);
+  if (dirty) scheduleAutoSave();
+}
+
+// ========= 自动保存（停顿 1.5 秒后） =========
+const AUTO_SAVE_DEBOUNCE = 1500;
+let autoSaveTimer = null;
+let lastSavedContent = null;
+function scheduleAutoSave() {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(doAutoSave, AUTO_SAVE_DEBOUNCE);
+}
+async function doAutoSave() {
+  autoSaveTimer = null;
+  if (!vditor || !vditorReady) return;
+  const content = vditor.getValue();
+  if (content === lastSavedContent) return;
+  try {
+    const res = await window.markpad.autoSave(content);
+    if (res && res.saved) {
+      lastSavedContent = content;
+      markDirty(false);   // 落盘成功 → 清 dirty
+      setAutoSaveStatus('已自动保存 · ' + nowHM());
+    } else if (res && res.draft) {
+      // 未命名：内容已暂存到草稿，dirty 保持
+      setAutoSaveStatus('草稿已暂存 · ' + nowHM());
+    }
+  } catch (err) {
+    setAutoSaveStatus('自动保存失败');
+  }
+}
+function nowHM() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+}
+function setAutoSaveStatus(text) {
+  const el = document.getElementById('status-autosave');
+  if (el) el.textContent = text;
 }
 
 function updateStats() {
@@ -1130,12 +1167,12 @@ function hideThemeTip() {
   themeTipEl && themeTipEl.classList.remove('show');
 }
 
-// 右上角快速打开按钮
-const quickOpenBtn = document.getElementById('quick-open-btn');
-if (quickOpenBtn) {
-  quickOpenBtn.addEventListener('click', (e) => {
+// 右上角：文档内搜索按钮
+const findBtn = document.getElementById('find-btn');
+if (findBtn) {
+  findBtn.addEventListener('click', (e) => {
     e.preventDefault();
-    showQuickOpen();
+    showFind();
   });
 }
 
@@ -1232,3 +1269,237 @@ initVditor(WELCOME);
 applyThemeMode(false);
 markDirty(false);
 window.markpad.rendererReady();
+
+// ============ 文档内搜索（⌘F） ============
+let findActive = false;
+let findMatches = [];
+let findIndex = -1;
+let findHighlightMarks = [];
+const findBar = document.getElementById('find-bar');
+const findInput = document.getElementById('find-input');
+const findCount = document.getElementById('find-count');
+const findPrev = document.getElementById('find-prev');
+const findNext = document.getElementById('find-next');
+const findCloseBtn = document.getElementById('find-close');
+
+function showFind() {
+  if (!findBar) return;
+  findBar.classList.remove('hidden');
+  findActive = true;
+  setTimeout(() => { findInput.focus(); findInput.select(); }, 0);
+}
+function hideFind() {
+  if (!findBar) return;
+  findBar.classList.add('hidden');
+  findActive = false;
+  clearFindHighlights();
+  findMatches = [];
+  findIndex = -1;
+  if (findCount) findCount.textContent = '0/0';
+}
+function clearFindHighlights() {
+  findHighlightMarks.forEach(m => {
+    const parent = m.parentNode;
+    if (!parent) return;
+    while (m.firstChild) parent.insertBefore(m.firstChild, m);
+    parent.removeChild(m);
+    parent.normalize();
+  });
+  findHighlightMarks = [];
+}
+function performFind() {
+  clearFindHighlights();
+  findMatches = [];
+  findIndex = -1;
+  const q = (findInput.value || '').trim();
+  if (!q) { if (findCount) findCount.textContent = '0/0'; return; }
+  const root = document.querySelector('.vditor-ir') || document.getElementById('vditor');
+  if (!root) return;
+  const lower = q.toLowerCase();
+  const textNodes = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      let p = n.parentElement;
+      while (p && p !== root) {
+        if (p.classList && (p.classList.contains('vditor-ir__marker') || p.classList.contains('vditor-toolbar'))) return NodeFilter.FILTER_REJECT;
+        p = p.parentElement;
+      }
+      return n.nodeValue && n.nodeValue.length ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+  let n;
+  while ((n = walker.nextNode())) textNodes.push(n);
+
+  textNodes.forEach(tn => {
+    const text = tn.nodeValue;
+    const tl = text.toLowerCase();
+    let from = 0; let idx;
+    const segments = [];
+    while ((idx = tl.indexOf(lower, from)) !== -1) {
+      segments.push([idx, idx + q.length]);
+      from = idx + q.length;
+    }
+    if (!segments.length) return;
+    const frag = document.createDocumentFragment();
+    let cur = 0;
+    segments.forEach(([s, e]) => {
+      if (s > cur) frag.appendChild(document.createTextNode(text.slice(cur, s)));
+      const mk = document.createElement('mark');
+      mk.className = 'mp-find-mark';
+      mk.textContent = text.slice(s, e);
+      frag.appendChild(mk);
+      findHighlightMarks.push(mk);
+      findMatches.push(mk);
+      cur = e;
+    });
+    if (cur < text.length) frag.appendChild(document.createTextNode(text.slice(cur)));
+    tn.parentNode.replaceChild(frag, tn);
+  });
+
+  if (findCount) findCount.textContent = findMatches.length ? ('1/' + findMatches.length) : '0/0';
+  if (findMatches.length) jumpToFindMatch(0);
+}
+function jumpToFindMatch(i) {
+  if (!findMatches.length) return;
+  findMatches.forEach(m => m.classList.remove('mp-find-current'));
+  findIndex = ((i % findMatches.length) + findMatches.length) % findMatches.length;
+  const m = findMatches[findIndex];
+  m.classList.add('mp-find-current');
+  m.scrollIntoView({ block: 'center', behavior: 'auto' });
+  if (findCount) findCount.textContent = (findIndex + 1) + '/' + findMatches.length;
+}
+if (findInput) {
+  let findDebounce = null;
+  findInput.addEventListener('input', () => {
+    if (findDebounce) clearTimeout(findDebounce);
+    findDebounce = setTimeout(performFind, 120);
+  });
+  findInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { hideFind(); return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) jumpToFindMatch(findIndex - 1);
+      else jumpToFindMatch(findIndex + 1);
+    }
+  });
+}
+if (findPrev) findPrev.addEventListener('click', () => jumpToFindMatch(findIndex - 1));
+if (findNext) findNext.addEventListener('click', () => jumpToFindMatch(findIndex + 1));
+if (findCloseBtn) findCloseBtn.addEventListener('click', hideFind);
+window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+    e.preventDefault(); e.stopPropagation();
+    showFind();
+  }
+  if (e.key === 'Escape' && findActive && findInput && !findInput.matches(':focus')) {
+    hideFind();
+  }
+}, true);
+window.markpad.onShowFind(() => showFind());
+
+// ============ 历史版本 ============
+const versionsOverlay = document.getElementById('versions-overlay');
+const versionsList = document.getElementById('versions-list');
+const versionsPreviewMeta = document.getElementById('versions-preview-meta');
+const versionsPreviewContent = document.getElementById('versions-preview-content');
+const versionsRestoreBtn = document.getElementById('versions-restore');
+const versionsCopyBtn = document.getElementById('versions-copy');
+const versionsCloseBtn = document.getElementById('versions-close');
+let currentVersionContent = null;
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+async function showVersions() {
+  if (!currentFilePath) {
+    showQuickToast('请先打开或保存一个文件，才能查看历史版本');
+    return;
+  }
+  versionsOverlay.classList.remove('hidden');
+  versionsList.innerHTML = '<div class="ver-empty">加载中…</div>';
+  versionsPreviewMeta.textContent = '';
+  versionsPreviewContent.textContent = '';
+  versionsRestoreBtn.disabled = true;
+  versionsCopyBtn.disabled = true;
+  currentVersionContent = null;
+
+  const list = await window.markpad.listVersions(currentFilePath);
+  if (!list.length) {
+    versionsList.innerHTML = '<div class="ver-empty">还没有历史版本，编辑后会自动产生。</div>';
+    return;
+  }
+  versionsList.innerHTML = list.map((v, i) => {
+    const d = new Date(v.time);
+    const time = d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+    const kb = (v.size / 1024).toFixed(1);
+    return '<div class="ver-item" data-path="' + escapeAttr(v.path) + '">' +
+      '<div class="ver-time">' + time + '</div>' +
+      '<div class="ver-meta">' + kb + ' KB · ' + (i === 0 ? '最新' : '第 ' + (i + 1) + ' 个') + '</div>' +
+      '</div>';
+  }).join('');
+  versionsList.querySelectorAll('.ver-item').forEach(el => {
+    el.addEventListener('click', async () => {
+      versionsList.querySelectorAll('.ver-item').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      const p = el.dataset.path;
+      const res = await window.markpad.readVersion(p);
+      if (res && res.ok) {
+        currentVersionContent = res.content;
+        versionsPreviewMeta.textContent = p.split('/').pop();
+        versionsPreviewContent.textContent = res.content;
+        versionsRestoreBtn.disabled = false;
+        versionsCopyBtn.disabled = false;
+      }
+    });
+  });
+  const first = versionsList.querySelector('.ver-item');
+  if (first) first.click();
+}
+function hideVersions() {
+  if (versionsOverlay) versionsOverlay.classList.add('hidden');
+}
+if (versionsCloseBtn) versionsCloseBtn.addEventListener('click', hideVersions);
+if (versionsOverlay) versionsOverlay.addEventListener('click', (e) => {
+  if (e.target === versionsOverlay) hideVersions();
+});
+if (versionsRestoreBtn) versionsRestoreBtn.addEventListener('click', () => {
+  if (currentVersionContent == null) return;
+  if (!confirm('恢复后会覆盖当前编辑区内容（当前内容会作为一个新版本保留），确定吗？')) return;
+  loadContent(currentVersionContent);
+  markDirty(true);
+  hideVersions();
+  showQuickToast('已恢复，正在自动保存…');
+});
+if (versionsCopyBtn) versionsCopyBtn.addEventListener('click', async () => {
+  if (currentVersionContent == null) return;
+  try { await navigator.clipboard.writeText(currentVersionContent); showQuickToast('已复制到剪贴板'); }
+  catch (_) { showQuickToast('复制失败'); }
+});
+window.markpad.onShowVersions(() => showVersions());
+
+// ============ 草稿恢复（启动时检查） ============
+const draftBanner = document.getElementById('draft-banner');
+const draftRestoreBtn = document.getElementById('draft-restore');
+const draftDiscardBtn = document.getElementById('draft-discard');
+let pendingDraft = null;
+
+(async function checkDraftOnStartup() {
+  try {
+    const res = await window.markpad.checkDraft();
+    if (res && res.has && res.content) {
+      pendingDraft = res;
+      if (draftBanner) draftBanner.classList.remove('hidden');
+    }
+  } catch (_) {}
+})();
+
+if (draftRestoreBtn) draftRestoreBtn.addEventListener('click', () => {
+  if (!pendingDraft) return;
+  loadContent(pendingDraft.content);
+  markDirty(true);
+  draftBanner.classList.add('hidden');
+  showQuickToast('已恢复未保存草稿');
+});
+if (draftDiscardBtn) draftDiscardBtn.addEventListener('click', async () => {
+  if (pendingDraft && pendingDraft.path) await window.markpad.discardDraft(pendingDraft.path);
+  pendingDraft = null;
+  draftBanner.classList.add('hidden');
+});

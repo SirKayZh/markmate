@@ -115,6 +115,8 @@ function writeFile(fp, content) {
   currentFilePath = fp;
   setTitle(fp, false);
   app.addRecentDocument(fp);
+  // 命名文件保存后，清掉未命名草稿
+  clearDraftIfAny();
 }
 
 async function doSave() {
@@ -139,12 +141,152 @@ ipcMain.handle('save-content', async (event, { content, saveAs }) => {
   }
   try {
     writeFile(fp, content);
+    snapshotVersion(fp, content);
     return { saved: true, path: fp };
   } catch (err) {
     dialog.showErrorBox('保存失败', String(err));
     return { saved: false };
   }
 });
+
+// ============ 自动保存与版本历史 ============
+// 命名文件：自动保存到原路径 + 打快照到历史区
+// 未命名文件：把内容存到 drafts/ 目录的临时草稿（崩溃恢复）
+ipcMain.handle('auto-save', async (event, { content }) => {
+  try {
+    if (currentFilePath) {
+      // 命名文件：直接保存
+      writeFile(currentFilePath, content);
+      snapshotVersion(currentFilePath, content);
+      return { saved: true, autoSaved: true, path: currentFilePath };
+    } else {
+      // 未命名：写到草稿目录
+      saveDraft(content);
+      return { saved: false, draft: true };
+    }
+  } catch (err) {
+    console.error('[auto-save]', err);
+    return { saved: false, error: String(err) };
+  }
+});
+
+// 版本历史：列出指定文件的快照
+ipcMain.handle('list-versions', async (event, { filePath } = {}) => {
+  const fp = filePath || currentFilePath;
+  if (!fp) return [];
+  try {
+    const dir = versionDirFor(fp);
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir)
+      .filter(n => n.endsWith('.md'))
+      .map(n => {
+        const full = path.join(dir, n);
+        const stat = fs.statSync(full);
+        // 文件名格式：YYYYMMDD-HHmmss.md
+        return { name: n, path: full, time: stat.mtimeMs, size: stat.size };
+      })
+      .sort((a, b) => b.time - a.time);
+  } catch (_) { return []; }
+});
+
+// 读取某个快照内容
+ipcMain.handle('read-version', async (event, { versionPath }) => {
+  try {
+    return { ok: true, content: fs.readFileSync(versionPath, 'utf-8') };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
+// 启动时检查草稿目录里是否有未命名草稿，有就提示恢复
+ipcMain.handle('check-draft', async () => {
+  try {
+    const draftDir = getDraftDir();
+    if (!fs.existsSync(draftDir)) return { has: false };
+    const files = fs.readdirSync(draftDir).filter(n => n.endsWith('.md'));
+    if (!files.length) return { has: false };
+    // 取最新的
+    const items = files.map(n => {
+      const full = path.join(draftDir, n);
+      const stat = fs.statSync(full);
+      return { path: full, time: stat.mtimeMs, size: stat.size };
+    }).sort((a, b) => b.time - a.time);
+    const newest = items[0];
+    const content = fs.readFileSync(newest.path, 'utf-8');
+    return { has: true, path: newest.path, time: newest.time, content };
+  } catch (err) {
+    return { has: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('discard-draft', async (event, { draftPath }) => {
+  try { if (draftPath && fs.existsSync(draftPath)) fs.unlinkSync(draftPath); return { ok: true }; }
+  catch (_) { return { ok: false }; }
+});
+
+// ====== 历史/草稿存储辅助 ======
+const MAX_VERSIONS_PER_FILE = 10;
+
+function appDataDir() {
+  return path.join(app.getPath('userData'), 'history');
+}
+function getDraftDir() {
+  return path.join(app.getPath('userData'), 'drafts');
+}
+function hashPath(fp) {
+  // 简单稳定哈希：取 path 的 djb2，保留 8 hex
+  let h = 5381;
+  for (let i = 0; i < fp.length; i++) h = ((h << 5) + h + fp.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, '0');
+}
+function versionDirFor(fp) {
+  const base = path.basename(fp).replace(/[^a-zA-Z0-9\u4e00-\u9fa5._-]/g, '_').slice(0, 40);
+  return path.join(appDataDir(), `${base}-${hashPath(fp)}`);
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+function timestamp() {
+  const d = new Date();
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+function snapshotVersion(fp, content) {
+  try {
+    const dir = versionDirFor(fp);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    // 与上一个快照内容相同则跳过
+    const existing = fs.readdirSync(dir).filter(n => n.endsWith('.md')).sort();
+    if (existing.length) {
+      const last = path.join(dir, existing[existing.length - 1]);
+      try {
+        const lastContent = fs.readFileSync(last, 'utf-8');
+        if (lastContent === content) return;
+      } catch (_) {}
+    }
+    const file = path.join(dir, `${timestamp()}.md`);
+    fs.writeFileSync(file, content, 'utf-8');
+    // 超出上限淘汰最旧
+    const all = fs.readdirSync(dir).filter(n => n.endsWith('.md')).sort();
+    while (all.length > MAX_VERSIONS_PER_FILE) {
+      const oldest = all.shift();
+      try { fs.unlinkSync(path.join(dir, oldest)); } catch (_) {}
+    }
+  } catch (err) { console.error('[snapshot]', err); }
+}
+function saveDraft(content) {
+  try {
+    const dir = getDraftDir();
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    // 单一草稿文件（未命名只保留最新），如需多窗口可扩展为按窗口 id
+    const file = path.join(dir, 'unsaved-draft.md');
+    fs.writeFileSync(file, content, 'utf-8');
+  } catch (err) { console.error('[draft]', err); }
+}
+// 命名文件成功保存后，清空未命名草稿
+function clearDraftIfAny() {
+  try {
+    const file = path.join(getDraftDir(), 'unsaved-draft.md');
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  } catch (_) {}
+}
 
 // 渲染进程通知脏状态
 ipcMain.on('set-dirty', (event, dirty) => {
@@ -231,6 +373,9 @@ function buildMenu() {
         { type: 'separator' },
         { label: '加入收藏', accelerator: 'CmdOrCtrl+D', click: () => mainWindow.webContents.send('toggle-favorite') },
         { type: 'separator' },
+        { label: '历史版本…', click: () => mainWindow.webContents.send('show-versions') },
+        { label: '在 Finder 中显示历史目录', click: () => shell.openPath(path.join(app.getPath('userData'), 'history')) },
+        { type: 'separator' },
         { label: '导出 HTML…', click: () => mainWindow.webContents.send('request-export-html') }
       ]
     },
@@ -249,6 +394,8 @@ function buildMenu() {
     {
       label: '视图',
       submenu: [
+        { label: '内容搜索…', accelerator: 'CmdOrCtrl+F', click: () => mainWindow.webContents.send('show-find') },
+        { type: 'separator' },
         { label: '切换大纲', accelerator: 'CmdOrCtrl+\\', click: () => mainWindow.webContents.send('toggle-outline') },
         { label: '切换源码面板', accelerator: 'CmdOrCtrl+E', click: () => mainWindow.webContents.send('toggle-source') },
         { type: 'separator' },
