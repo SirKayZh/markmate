@@ -98,9 +98,11 @@ function openFile(fp) {
     return;
   }
   try {
-    const content = fs.readFileSync(fp, 'utf-8');
+    const rawContent = fs.readFileSync(fp, 'utf-8');
     currentFilePath = fp;
     setTitle(fp, false);
+    // 把相对路径的图片展开为 file:// 绝对路径（仅用于编辑器内显示，磁盘里不变）
+    const content = expandImagePaths(rawContent, fp);
     mainWindow.webContents.send('file-opened', { path: fp, content });
     app.addRecentDocument(fp);
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -111,12 +113,59 @@ function openFile(fp) {
 }
 
 function writeFile(fp, content) {
-  fs.writeFileSync(fp, content, 'utf-8');
+  // 把图片的 file:// 绝对路径转成相对 md 文件的相对路径（前提是同盘且在 assets/ 内）
+  // ——这样图片可随 md 文件迁移，移到别的电脑也不会失效
+  const normalized = normalizeImagePaths(content, fp);
+  fs.writeFileSync(fp, normalized, 'utf-8');
   currentFilePath = fp;
   setTitle(fp, false);
   app.addRecentDocument(fp);
   // 命名文件保存后，清掉未命名草稿
   clearDraftIfAny();
+}
+
+// 把 markdown 里 file:// 绝对路径形式的图片，转成相对 md 文件的相对路径
+// 用于"未命名 → 另存为"或"图片粘贴时还没保存过"的情况
+function normalizeImagePaths(content, mdPath) {
+  if (!content || !mdPath) return content;
+  const mdDir = path.dirname(mdPath);
+  const convert = (url) => {
+    if (!/^file:\/\//i.test(url)) return null;
+    try {
+      const abs = decodeURI(url.replace(/^file:\/\//i, ''));
+      if (!path.isAbsolute(abs)) return null;
+      const rel = path.relative(mdDir, abs);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+      return './' + rel.split(path.sep).join('/');
+    } catch (_) { return null; }
+  };
+  // Markdown: ![alt](url "title")
+  content = content.replace(/(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g,
+    (m, head, url, tail) => { const r = convert(url); return r ? head + r + tail : m; });
+  // HTML: <img ... src="url" ...>
+  content = content.replace(/(<img\b[^>]*?\ssrc=["'])([^"']+)(["'][^>]*>)/gi,
+    (m, head, url, tail) => { const r = convert(url); return r ? head + r + tail : m; });
+  return content;
+}
+
+// 反向：把 md 里的相对路径图片转成 file:// 绝对路径用于编辑器内显示
+function expandImagePaths(content, mdPath) {
+  if (!content || !mdPath) return content;
+  const mdDir = path.dirname(mdPath);
+  const convert = (url) => {
+    if (/^(file:|https?:|data:)/i.test(url)) return null;
+    if (url.startsWith('#') || url.startsWith('//')) return null;
+    try {
+      const abs = path.resolve(mdDir, url);
+      if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i.test(abs)) return null;
+      return 'file://' + abs.split(path.sep).join('/');
+    } catch (_) { return null; }
+  };
+  content = content.replace(/(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g,
+    (m, head, url, tail) => { const r = convert(url); return r ? head + r + tail : m; });
+  content = content.replace(/(<img\b[^>]*?\ssrc=["'])([^"']+)(["'][^>]*>)/gi,
+    (m, head, url, tail) => { const r = convert(url); return r ? head + r + tail : m; });
+  return content;
 }
 
 async function doSave() {
@@ -141,7 +190,8 @@ ipcMain.handle('save-content', async (event, { content, saveAs }) => {
   }
   try {
     writeFile(fp, content);
-    snapshotVersion(fp, content);
+    // 快照存的是磁盘上的归一化版本（相对路径），保证版本恢复后路径仍然有效
+    snapshotVersion(fp, normalizeImagePaths(content, fp));
     return { saved: true, path: fp };
   } catch (err) {
     dialog.showErrorBox('保存失败', String(err));
@@ -155,9 +205,9 @@ ipcMain.handle('save-content', async (event, { content, saveAs }) => {
 ipcMain.handle('auto-save', async (event, { content }) => {
   try {
     if (currentFilePath) {
-      // 命名文件：直接保存
+      // 命名文件：直接保存（writeFile 内部已做相对路径归一化）
       writeFile(currentFilePath, content);
-      snapshotVersion(currentFilePath, content);
+      snapshotVersion(currentFilePath, normalizeImagePaths(content, currentFilePath));
       return { saved: true, autoSaved: true, path: currentFilePath };
     } else {
       // 未命名：写到草稿目录
@@ -192,7 +242,10 @@ ipcMain.handle('list-versions', async (event, { filePath } = {}) => {
 // 读取某个快照内容
 ipcMain.handle('read-version', async (event, { versionPath }) => {
   try {
-    return { ok: true, content: fs.readFileSync(versionPath, 'utf-8') };
+    const raw = fs.readFileSync(versionPath, 'utf-8');
+    // 版本快照里是相对路径，恢复到编辑器前要展开成 file:// 让图片可见
+    const content = currentFilePath ? expandImagePaths(raw, currentFilePath) : raw;
+    return { ok: true, content };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -748,12 +801,13 @@ ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }
     const buf = Buffer.from(buffer);
     fs.writeFileSync(fullPath, buf);
 
-    // 返回相对于文档目录的路径（vditor 用它引用图片）
-    const relPath = (currentFilePath ? './' : '') + 'assets/' + filename;
-
-    // 如果是"本文档之外"的 assets（临时目录），返回绝对路径更稳
-    const url = currentFilePath ? relPath : fullPath;
-    return { url, path: fullPath };
+    // 返回给渲染层的 URL：统一用 file:// 绝对路径
+    // —— 这样编辑器内立即可见图片（相对路径在 IR 模式下不会渲染，会显示裂图）
+    // 真正保存 md 时，由 save-content 的预处理把绝对路径转回相对路径，保证 md 文件可移植
+    const fileUrl = 'file://' + fullPath.split(path.sep).join('/');
+    // 同时返回相对路径，供需要的场景使用
+    const relPath = currentFilePath ? './assets/' + filename : '';
+    return { url: fileUrl, relPath, path: fullPath };
   } catch (err) {
     console.error('[MarkPad] 图片保存失败:', err);
     return { url: '', path: '' };

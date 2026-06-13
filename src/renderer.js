@@ -192,23 +192,37 @@ function initVditor(value) {
 }
 
 // ========= 图片上传：拖拽/粘贴 → 保存到 assets/ 子目录 =========
+// ⚠️ 重要：vditor 的 upload.handler **返回非空字符串会被当成"错误信息"显示**，
+// 不会把它当成图片 URL 来插入！正确做法是 handler 内部用 vditor.insertValue()
+// 手动插入 Markdown 图片语法，handler 返回 null（无错误）。
 async function handleImageUpload(files) {
-  const results = [];
-  for (const file of files) {
-    try {
+  if (!files || !files.length) return null;
+  try {
+    const fragments = [];
+    for (const file of files) {
+      // 只处理图片；其它类型放行（返回 null，vditor 不会报错也不会插入）
+      if (file && file.type && !file.type.startsWith('image/')) continue;
       const result = await window.markpad.saveUploadedImage(file);
-      // vditor 期望返回的格式是 URL；我们返回相对路径
-      results.push(result.url);
-    } catch (err) {
-      console.error('[MarkPad] 图片上传失败:', err);
-      return ''; // 失败返回空字符串，vditor 不会插入任何内容
+      if (!result || !result.url) continue;
+      const alt = (file && file.name ? file.name.replace(/\.[^.]+$/, '') : 'image').replace(/[\[\]]/g, '');
+      fragments.push(`![${alt}](${result.url})`);
     }
+    if (!fragments.length) return null;
+    // 多张图片用换行分隔；IR 模式 insertValue(true) 会立即渲染
+    const md = fragments.join('\n\n');
+    if (vditor && typeof vditor.insertValue === 'function') {
+      vditor.insertValue(md, true);
+      // 触发脏标记 + 同步源码
+      markDirty(true);
+      syncSourceFromVditor();
+    }
+    // 返回 null 表示无错误；图片已经被我们手动插入
+    return null;
+  } catch (err) {
+    console.error('[MarkPad] 图片上传失败:', err);
+    // 返回错误字符串：vditor 会显示该错误提示
+    return `图片插入失败：${err && err.message || err}`;
   }
-  // vditor handler 期望返回 Promise<string>。多文件时返回 JSON 字符串会被 vditor 认识？
-  // 单文件最稳，多文件 vditor 会逐个调用 handler，所以这里直接返回第一个结果
-  if (results.length === 1) return results[0];
-  // 多文件兜底：暂时只处理第一个（vditor IR 模式多为单文件拖入）
-  return results[0] || '';
 }
 
 // ========= 大纲：自绘树形结构（多级缩进 + 折叠展开），不再依赖 vditor 自带 outline =========
