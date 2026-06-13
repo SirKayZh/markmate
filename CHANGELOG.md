@@ -9,292 +9,115 @@
 
 ---
 
-## [1.7.2] - 2026-06-13
-
-### 修复 Fixed
-- **图片粘贴/拖拽插入失败**：v1.7.0/1.7.1 的图片粘贴/拖入会失败，甚至弹出红色错误提示。
-  - **根因**：vditor 的 `upload.handler` 返回**非空字符串会被当成"错误信息"显示**，而不是 URL。之前直接返回了 `./assets/xxx.png` 字符串，于是 vditor 把它当错误弹了出来。
-  - **正解**：handler 内部用 `vditor.insertValue('![alt](url)', true)` 手动插入 Markdown 图片语法，handler 返回 `null`（表示无错误）。
-- **粘贴/拖入的图片显示成裂图**：相对路径 `./assets/xxx.png` 在 IR 模式编辑器内不会被渲染。
-  - **根因**：Chromium 的 `file://` 协议下相对路径不解析。
-  - **正解**：编辑器内**显示用 `file://` 绝对路径**保证可见；保存到 md 文件时**自动转回相对路径**，保证 md 可移植（换路径只要 assets/ 跟着走依然能看图）。
-- **打开已有 md 文件图片裂图**：已存的相对路径图片打开后看不到。
-  - 修复：打开文件时主进程把相对路径展开成 `file://` 给编辑器；保存时再归一化回去。版本快照恢复同样处理。
-
-### 影响范围
-- 图片粘贴 / 拖入 / 文件菜单上传，三个入口都修了。
-- 已有 md 文件无需重存——只是显示侧的处理改变，磁盘上的 md 内容仍是相对路径。
-
----
-
-## [1.7.1] - 2026-06-13
-
-### 修复 Fixed
-- **长图导出质量大幅提升**：从渲染层 `html2canvas` 改为主进程 **offscreen BrowserWindow + capturePage**。原方案在中文字体、KaTeX 公式、emoji、代码块下会糊；新方案走 Chromium 原生渲染管线，1:1 还原编辑器视觉。
-  - 用 `zoomFactor=2` 在 Chromium 内按倍率渲染，胜过事后位图放大；retina 屏下字形锐利
-  - 自动测量整篇文档高度，无需手动设置画布尺寸
-  - 等待所有图片加载完成再截图，避免空白占位
-  - 长代码块自动 `white-space:pre-wrap`，防止横向滚动条出现在截图里
-
-### 优化 Improved
-- 移除 `html2canvas` 依赖（~194KB），减回运行时依赖数量到 2 个，DMG 体积回落。
-
----
-
-
-## [1.7.0] - 2026-06-13
-
-多格式导出 + 本地图片目录入口：
+## [1.4.0] - 2026-06-13
 
 ### 新增 Added
-- **📄 多格式导出（文件 → 导出）**：在「文件」菜单下新增「导出」子菜单，支持四种格式，全部保留与编辑器一致的排版（含字体、代码块、表格、引用、图片自适应）：
-  - **PDF**（⌘⇧P）：用 Electron 内置 `printToPDF` 在隐藏渲染窗口中渲染完整 HTML 后输出，零外部依赖、跨页排版优化（标题不被切断、表格/代码块整块保留）。
-  - **HTML**：内联完整的 Vditor 预览样式，单文件可直接发邮件/上传，打开即与编辑器一致。
-  - **Word（.docx）**：用 `html-docx-js` 把渲染后 HTML 转成原生 docx，Word/Pages/WPS 直接打开，保留段落/标题/列表/表格/代码块/图片。
-  - **长图（PNG）**：主进程 `BrowserWindow.capturePage` 全页面截屏，1:1 还原编辑器视觉（v1.7.1 起改进）。
-- **🖼️ 在 Finder 中显示图片目录（文件菜单）**：一键打开当前文档同级的 `assets/` 目录（首次访问会自动创建），方便手动整理粘贴/拖拽进来的图片。
+- **📄 多格式导出**（文件 → 导出）：支持 PDF（⌘⇧P）、HTML、Word（.docx）、长图（PNG）四种格式，全部保留编辑器排版（字体、代码块、表格、引用、图片）。
+  - PDF：Electron 内置 `printToPDF`，零外部依赖，跨页排版优化。
+  - HTML：内联完整 Vditor 预览样式，单文件可直接发邮件/上传。
+  - Word：`html-docx-js` 转换，Word/Pages/WPS 直接打开。
+  - 长图：主进程 `BrowserWindow.capturePage`，`zoomFactor=2` 保证 retina 锐利。
+- **🖼️ 图片管理**：拖拽或 ⌘V 图片到编辑器，自动保存到文档同目录 `assets/` 子文件夹，正文插入相对路径。
+  - 编辑器内用 `file://` 绝对路径显示，保存到 md 时自动转回相对路径，保证可移植。
+  - 打开已有 md 文件时，主进程自动展开相对路径为 `file://` 给编辑器。
+- **文件 → 在 Finder 中显示图片目录**：一键打开 `assets/` 目录。
 
 ### 优化 Improved
-- 图片粘贴/拖拽流程保持不变：拖拽或 `⌘V` 图片到编辑器内，图片自动保存到「文档同目录 / assets / 文件名.扩展」，正文里插入相对路径——这样导出 PDF/Word/长图时图片不会丢失，且 md 文件移动到其他设备时图片跟随移动。
-- 导出 HTML 现在会把相对图片路径转成 `file://` 绝对路径写入文档头，确保单独打开 HTML 时图片不丢失。
-- 旧版「文件 → 导出 HTML」入口合并到「导出」子菜单。
-
-### 体积影响
-- 新增 2 个运行时依赖：`html-docx-js` (~406KB) + `html2canvas` (~194KB)。
-- DMG 体积预计 +0.6MB 左右，仍在反臃肿预算内（PDF 走 Electron 自带 API，零额外依赖）。
-
----
-
-
-## [1.6.3] - 2026-06-12
-
-### 优化 Improved
-- **首次打开 md 不再弹「允许访问桌面」**：默认折叠「当前文件夹」分区，仅在用户手动展开后才主动 readdir 同目录文件。macOS 26 的 TCC 隐私机制只在 app 真正访问受保护目录时才弹窗——这样阅读单个 md 时不会触发权限请求。
-- 老用户已展开「当前文件夹」分区的行为不变。
-
----
-
-## [1.6.2] - 2026-06-12
-
-写作安全与文档搜索：
-
-### 新增 Added
-- **🔍 文档内搜索（⌘F）**：右上角原"快速打开"按钮改为"内容搜索"——在当前文档中实时高亮所有匹配，Enter / ⇧Enter 跳转下一个 / 上一个，浮层显示「当前/总数」。
-- **自动保存**：停止输入 1.5 秒后自动落盘，状态栏显示「已自动保存 · 时:分:秒」。新建未命名文档时，内容也会暂存到本地草稿目录。
-- **历史版本（文件 → 历史版本…）**：每次自动保存都打快照，本地按文件保留最近 **10 个版本**。可在面板里挑选版本预览、一键恢复或复制内容。
-- **意外关闭恢复**：未命名文档若意外退出（崩溃/断电/强杀），下次启动自动弹出 banner 提示"检测到上次未保存的草稿"，可一键恢复。
-- **菜单：文件 → 在 Finder 中显示历史目录**，方便手动管理快照存储。
+- 移除 `html2canvas` 依赖（~194KB），长图改用 Chromium 原生截图。
+- 长图自动测量整篇文档高度，等图片加载完再截，避免空白。
+- 长代码块自动 `white-space: pre-wrap`，防止横向滚动条出现在截图里。
 
 ### 修复 Fixed
-- 内容搜索拦截系统默认 ⌘F，提供原生体验的查找浮层（替代浏览器默认查找）。
+- 图片粘贴/拖拽插入不再弹出红色错误提示（vditor upload handler 返回 null 而非路径字符串）。
+- 相对路径图片在 IR 模式下正确显示（不再裂图）。
 
 ---
 
-## [1.6.1] - 2026-06-12
-
-侧栏小幅打磨：
-
-### 新增 Added
-- **文件管理：分区可折叠**：收藏夹 / 最近打开 / 当前文件夹三段都可点击标题折叠展开，每段右侧显示数量徽章，折叠状态本地持久化。
-- **文件管理：关键词搜索**：顶部新增搜索框，输入关键词实时过滤三个分区的文件名与路径，Esc 一键清空。
-- **主题切换 hover 提示**：鼠标悬停顶部主题切换按钮时，弹出气泡显示当前模式（☀️ 亮色 / 🌙 暗色 / 💻 跟随系统），跟随系统模式下还会显示当前是亮还是暗。
-
----
-
-## [1.6.0] - 2026-06-12
-
-本版本聚焦"专注写作 + 文件管理"两条主线，把侧栏升级成实用的工作面板。
+## [1.3.0] - 2026-06-12
 
 ### 新增 Added
 
 #### 大纲面板 · 多级树形导航
-- 自绘大纲树，按标题层级缩进显示，一眼看清文档结构
-- 父级标题前 ▾ 折叠按钮，可展开/收起整段
-- 折叠状态本地持久化，下次打开保持一致
-- H1/H2/H3-H6 按级字号、粗细微调，多层级一眼可辨
-- 点击大纲项跳转到对应位置，并显示 toast 反馈与目标高亮闪烁
+- 自绘大纲树，按标题层级缩进显示，H1/H2/H3-H6 字号粗细微调。
+- ▾ 折叠按钮展开/收起段落，折叠状态本地持久化。
+- 点击大纲项跳转目标位置 + toast「已跳转到：xxx」+ 蓝色高亮闪烁。
 
-#### 文件管理面板 · 收藏 + 最近 + 当前目录
-- **顶部 ⭐ 收藏按钮**：一键收藏 / 取消收藏当前打开的文件，支持 **⌘D** 快捷键，已收藏时按钮变金色实心
-- **收藏夹区**：固定置顶，多文件场景下快速跳转
-- **最近打开**：自动记录最近 20 个文件
-- **当前文件夹**：自动列出当前文件所在目录下的所有 markdown 文件，方便在同一项目内切换
-- 每个文件项右侧 ☆/★ 切换图标，随手收藏
-- 当前打开的文件用蓝色边条 + 蓝色字体高亮，避免在长列表里迷路
+#### 文件管理面板
+- ⭐ 收藏按钮（⌘D）：收藏/取消收藏当前文件，已收藏时按钮金色实心。
+- 收藏夹区固定置顶，快速跳转。
+- 最近打开自动记录最近 20 个文件。
+- 当前文件夹自动列出同目录下所有 md 文件。
+- 分区块可折叠（收藏/最近/当前文件夹），每段显示数量徽章，折叠本地持久化。
+- 顶部搜索框实时过滤文件名与路径，Esc 清空。
 
 #### 快速打开（⌘P）
-- 按 **⌘P** 调出快速打开面板，模糊搜索收藏夹与最近文件
-- ↑↓ 键导航，Enter 打开，Esc 关闭
-- 顶部工具栏新增🔍快速打开按钮
+- 模糊搜索收藏夹与最近文件，↑↓ 导航，Enter 打开。
 
-#### 专注模式 · 打字机模式 · 多套主题
-- **专注模式（⌘.）**：自动隐藏侧栏，去除一切干扰元素
-- **打字机模式**：当前编辑行始终保持屏幕中央，长时间写作更舒适
-- **5 套排版主题**：Default / GitHub / Night / Sepia（护眼米黄）/ Slate，菜单"视图 → 排版主题"切换
+#### 专注模式 · 打字机模式 · 排版主题
+- 专注模式（⌘.）：自动隐藏侧栏。
+- 打字机模式：当前编辑行保持屏幕中央。
+- 5 套排版主题：Default / GitHub / Night / Sepia（护眼）/ Slate。
+
+#### 文档搜索与安全
+- 🔍 文档内搜索（⌘F）：实时高亮匹配，Enter / ⇧Enter 跳转，浮层显示「当前/总数」。
+- 自动保存：停止输入 1.5 秒后自动落盘，状态栏显示时间戳。
+- 历史版本（文件 → 历史版本…）：按文件保留最近 10 个快照，可预览/恢复/复制。
+- 意外关闭恢复：崩溃/断电后下次启动自动提示恢复草稿。
+
+#### Markdown 扩展语法
+- `==高亮==` / 脚注 `[^1]` / 自动目录 `[toc]` / 中英文自动空格 / 术语修正。
+- 代码块左侧行号，CSS 适配明暗主题。
 
 #### 三栏可拖动
-- 大纲 ↔ 编辑器 ↔ 源码三栏之间均可拖动分隔条调整宽度
-- 大纲可隐藏（⌘\\），隐藏后左侧保留细窄入口条，鼠标悬停即可重新展开
-
-#### Markdown 全语法增强
-- `==高亮==` / 脚注 `[^1]` / 自动目录 `[toc]` / 中英文自动空格 / 术语自动修正
-- 代码块左侧行号显示
-- 图片拖拽 & 粘贴自动保存到 `assets/` 子目录
+- 大纲 ↔ 编辑器 ↔ 源码三栏分隔条可拖动调整宽度。
+- 大纲可隐藏（⌘\\），隐藏后左侧保留窄入口条，悬停展开。
 
 ### 优化 Improved
-- 文件操作菜单：新增"新建窗口""打开最近"
-- 状态栏显示当前文件名、字数、行列号
-- 顶部窗口拖拽区按钮重新布局：搜索 / 收藏 / 源码 / 主题，从左到右
+- 文件操作菜单：新建窗口、打开最近。
+- 状态栏显示文件名、字数、行列号。
+- 主题切换按钮 hover 气泡提示当前模式。
+- 首次打开 md 不再弹「允许访问桌面」（默认折叠当前文件夹分区，展开后才 readdir）。
 
 ### 修复 Fixed
-- 修复双击 `.md` 文件能调起 MarkPad 但内容偶发不显示的问题
-- 修复大纲在文件列表 tab 下还会显示的视觉冲突
-- 修复最近打开与当前文件夹列表在某些场景下不刷新的问题
-- 修复大纲收起后无法重新展开、收起态分隔条样式不协调等 UI 细节
-- 多处小幅度的兼容性与稳定性增强
+- 大纲跳转经过多轮架构优化：最终方案是复用 vditor 自身大纲 DOM + capture 点击委托 + `scrollIntoView`，彻底避开 vditor 内部 `selectionchange` 干扰。
+- 大纲侧栏默认可见（不再需要 ⌘\\ 才能看到）。
+- 文件关联打开偶发内容不显示。
+- 最近打开与当前文件夹列表刷新问题。
+- 多处 UI 细节修复。
 
 ---
 
-## [1.5.0] - 2026-06-12
+## [1.2.0] - 2026-06-11 ~ 12
 
 ### 新增 Added
-- **Markdown 扩展语法配置**：启用 vditor `markdown` 扩展选项：
-  - `mark: true` — `==高亮==` 语法支持（IR 模式下显示源码，导出 HTML 时完整渲染为 `<mark>`）
-  - `footnotes: true` — 脚注 `[^1]` 语法（导出时渲染脚注区）
-  - `toc: true` — `[toc]` 自动生成目录（导出时渲染完整 TOC）
-  - `autoSpace: true` — 中英文间自动空格
-  - `fixTermTypo: true` — 自动术语修正
-- **代码块行号**：`preview.hljs.lineNumber: true`，代码块左侧显示行号，CSS 适配明暗主题
-- **图片拖拽 / 粘贴上传**：
-  - 拖拽图片到编辑器或粘贴截图，自动保存到文档同目录的 `assets/` 子文件夹
-  - 图片文件名自动去重（加时间戳后缀）
-  - 未保存文档的图片暂存到系统临时目录
-  - IPC 通道：`save-uploaded-image`（preload → main）
-  - 修复了之前的 drop handler 会拦截所有文件（包括图片）的问题——现在图片放行给 vditor 处理
-- **语法完整欢迎文档**：新的 `WELCOME` 文档覆盖粗体/斜体/删除线/高亮/列表/任务清单/引用/链接/表格/代码块/数学公式/脚注/目录等全部常用语法
-
-### 技术细节 Technical
-- `renderer.js`：`initVditor` 新增 `markdown` / `upload` 配置；新增 `handleImageUpload` 函数；drop handler 加入图片检测（`allImages` 判断，放行给 vditor）
-- `preload.js`：新增 `saveUploadedImage` IPC invoke（把 File.arrayBuffer 序列化为 Uint8Array 传给主进程）
-- `main.js`：新增 `save-uploaded-image` IPC handler（创建 assets/ 目录、去重、写盘、返回相对路径）
-- `styles.css`：新增 `.hljs-ln-numbers` / `mark` / `.footnotes` / `.vditor-toc` 样式
-- CDP 验证：粗体/斜体/删除线/引用/列表/任务清单/表格/代码高亮/数学公式/水平线/链接/大纲跳转/图片上传 IPC 全部通过
-
----
-
-## [1.4.4] - 2026-06-12
+- **大纲点击跳转**：左侧大纲点击标题平滑滚动到对应位置，当前项高亮。
+- **三栏布局 / 源码同步面板**：右上角 ⌘E 切换，右侧源码与中间 WYSIWYG 双向同步（220ms 节流回写）。
+- **关闭未保存提示**：⌘W / ⌘Q 时弹出原生对话框「保存/不保存/取消」，防止丢内容。
 
 ### 修复 Fixed
-- **大纲侧栏默认可见**：v1.4.3 大纲面板初始 `class="hidden"`，用户需要 ⌘\ 才能看到——但 toggle 状态可能跟 DOM 不同步，导致"大纲消失了"。现在改为大纲默认展开可见（`outlineVisible = true`，HTML 去掉了 `class="hidden"`），用户如果不想要可以 ⌘\ 收起。
-- **vditor outline 样式加固**：给 `#outline-content .vditor-outline` 的 `position/left/width` 等全部加 `!important`，彻底防止 vditor 自身 CSS 的绝对定位覆盖。
-
-### 技术细节 Technical
-- `index.html`：`<aside id="outline">` 不再带 `class="hidden"`
-- `renderer.js`：`outlineVisible` 初始值 `false → true`
-- `styles.css`：`#outline-content .vditor-outline` 加了 `position: static !important` 等全覆盖
-
----
-
-## [1.4.3] - 2026-06-12
-
-### 修复 Fixed
-- **大纲跳转——换方案，彻底搞定**：v1.0.1~v1.4.2 三版全没修好，因为一直在跟 vditor 的内部滚动机制打架。这次 CDP 深入 debug 找到**真正的根本原因**：
-  - `vditor.vditor.element`（即 `#vditor` DIV）的 `overflow: visible` 且 `scrollHeight == clientHeight`（均为 706）——**根本不可滚动**。
-  - vditor 自己的 outline click handler 往这个不可滚动的元素设 `scrollTop`——等于写进黑洞，**连 vditor 原生的跳转在这套布局下都不生效**。
-  - 真正可滚动的容器是 `pre.vditor-reset`（scrollHeight=1712, clientHeight=705, overflow-y:auto），但 vditor 没去滚它。
-
-- **1.4.3 改用全新方案**：不再自己渲染大纲、不再自己算滚动位置。改为：
-  1. vditor 负责渲染大纲（用 `outline: { enable: true }`），它在每个 `<span>` 上挂了正确的 `data-target-id`，跟编辑器内的 h 元素（带 `id`）一一对应。
-  2. 我们在 `after` 回调里把 vditor 生成的 `.vditor-outline` DOM **搬进**自己的 `#outline-content` 侧边栏。
-  3. 在 `#outline-content` 上挂 capture 阶段的 click 委托：拦截对 `[data-target-id]` 的点击 → `e.preventDefault()` 阻止 vditor 无效的 scrollTop 操作 → `document.getElementById(targetId).scrollIntoView({ block:'start' })` —— **浏览器原生 API 不管嵌套多深都能找到正确滚动容器**。
-  4. Toast + flash 高亮保留。
-
-- 删除了**全部**自己写的死代码：`parsedHeadings`, `refreshOutline`, `slugify`, `tagHeadingsInDom`, `getEditorHeadings`, `getScrollContainerFromElement`, `scrollToHeadingByIndex`, `scrollHeadingIntoView`, `collectScrollableAncestors`, `moveCaretTo`, `escapeHtml` ——约 200 行定制逻辑全部替换为 15 行 `moveVditorOutline` + 委托 listener。
-
-### 技术细节 Technical
-- `renderer.js`：新增 `moveVditorOutline()`（在 `after`/`input` 回调中调用，把 vditor outline 搬进侧边栏）；`#outline-content` 上挂 capture click 委托 listener 拦截 `[data-target-id]` 点击。
-- `styles.css`：新增 vditor 自带 outline 在侧边栏内的样式适配（`.vditor-outline__content ul/li`, `[data-target-id]` 等）。
-- CDP 验证：6 个标题逐个点击，`scrollTop` 全部正确递增（44→157→396→658→1006），toast/flash 全部触发。
-
----
-
-## [1.4.2] - 2026-06-12
-
-### 修复 Fixed
-- **大纲点击跳转，这次真的彻底搞定**：v1.4.1 CDP 真机验证滚动确实发生（`pre.vditor-reset.scrollTop` 数值正确变化），但用户主观仍感觉"没跳"。复盘定位到两个真正根因：
-  1. v1.4.1 调了 `moveCaretTo`（`Selection.removeAllRanges + addRange`）想把光标移到目标——这反而触发 vditor IR 模式自带的 `selectionchange` 处理，**vditor 立刻把视口拉回光标位置**，跟我们的滚动反向打架。
-  2. smooth 动画 + 默认欢迎文档段间距不大，整个滚动看上去"只挪了一点点"，很难感知。
-- 1.4.2 的方案：① **彻底不再操作 selection/focus**——只做"滚动 + 高亮 + toast"三件事，避开 vditor 内部干扰；② 滚动改用 instant（瞬时）+ 自动收集所有可滚动祖先逐个对齐，外加 `scrollIntoView` 兜底；③ flash 高亮加强（背景透明度 0.55 + 6px 蓝色光晕，时长延长到 1.6s）；④ **新增顶部 toast**：每次点击大纲都会在屏幕顶部居中弹出"已跳转到：xxx"提示，1.4s 后淡出——用户**绝对不会感知不到**跳转。
-
-### 技术细节 Technical
-- `renderer.js`：删除 `moveCaretTo` / `getScrollContainerFromElement` / `scrollElementInto`；新增 `scrollHeadingIntoView` / `collectScrollableAncestors` / `showJumpToast`。
-- `styles.css`：增强 `@keyframes mp-heading-flash-kf`（更高对比度 + 光晕），新增 `#mp-jump-toast` 样式。
-- 验证：CDP 自动化脚本逐个点击 6 个大纲项，每次 `toastShown=true / hasFlash=true / scrollTop` 数值正确递增。
-
----
-
-## [1.4.1] - 2026-06-12
-
-### 修复 Fixed
-- **大纲点击跳转真正生效**：v1.4.0 的实现逻辑虽对、但用户感知不到——根因有两个：
-  1. 之前的 `getEditorRoot()` 把滚动容器锁定到了 `.vditor-reset` 节点（也叫"内容元素"），但 IR 模式下真正可滚动的是它自己（`pre.vditor-reset`，`overflow-y:auto`），需要从目标 h 元素往上找最近一个 `scrollHeight > clientHeight` 的祖先才稳。
-  2. 点完大纲，光标还停在原编辑位置，用户一打字就跳回去，会以为"没跳过"。
-- 现在大纲点击：① 用 `getScrollContainerFromElement(target)` 沿祖先链找正确滚动容器；② 平滑滚动到目标；③ 给目标标题做一个 1.1s 的**蓝色淡入淡出闪烁**（`.mp-heading-flash`）作为视觉确认；④ 把光标移到目标标题开头（`window.getSelection` + `Range`），确保后续编辑就在这里发生。
-- 通过 Chrome DevTools Protocol 真机自动化验证：6 个标题逐个点击，`scrollTop` 数值递增正确，每次都有 flash 元素出现，大纲 active 项也跟着切换。
-
-### 技术细节 Technical
-- `renderer.js`：新增 `getScrollContainerFromElement` / `flashHeading` / `moveCaretTo`；移除"在 h 上挂 id"的无效逻辑（vditor 每次 input 都会重渲染 DOM，挂的属性会被冲掉，所以改用即时 `querySelectorAll` + 索引定位）。
-- `styles.css`：新增 `@keyframes mp-heading-flash-kf` 动画。
-- `main.js`：保留环境变量 `MARKPAD_DEBUG=1` 时自动打开 DevTools，方便后续诊断（生产模式默认关闭）。
-
----
-
-## [1.4.0] - 2026-06-11
-
-### 新增 Added
-- **大纲点击跳转**：左侧大纲列表点击任一标题，中间编辑区平滑滚动到对应位置；当前项高亮显示。修复了之前 IR 模式下用 `textContent` 模糊匹配导致跳错位置的问题——改为按"第 i 个标题对应 DOM 里第 i 个 h 元素"的索引绑定，并给每个 h 标记 `id` 方便定位。
-- **三栏布局 / 源码同步面板**：右上角加了一个面板切换按钮（⌘E），打开后右侧出现「Markdown 源码」面板。中间是渲染好的 WYSIWYG 视图，右侧是纯文本 Markdown 源码——无论在哪一边修改都会**双向同步**到另一边。源码侧改动 220ms 节流后回写到 vditor，避免每个按键都重渲染；焦点切换时立即落地。
-- **关闭未保存提示**：点关闭按钮 / ⌘W / ⌘Q 时，如果当前文档有未保存改动，会弹出原生对话框「保存 / 不保存 / 取消」。选「保存」走标准保存流程（无路径时自动出另存为），保存成功才真正关闭；选「取消」窗口保持原状不丢内容。
-
-### 技术细节 Technical
-- `main.js`：拦截 `window.close`，脏状态下发 `confirm-close` 给渲染层走原生 dialog；新增 `ask-close-confirm` IPC handler；`before-quit` 兜底处理 ⌘Q。
-- `renderer.js`：新增 `syncSourceFromVditor` / `syncVditorFromSource` 双向同步，用 `syncingFromVditor`/`syncingFromSource` 标志位防回环；大纲改为按索引直跳，并给每个 h 标记 `data-mp-idx` + `id`。
-- `index.html` / `styles.css`：右侧 420px 源码面板（可收起 `.hidden` → `margin-right:-420px`），顶栏新增源码切换图标。
-
----
-
-## [1.3.0] - 2026-06-11
-
-### 修复 Fixed
-- **拖拽文件打不开**：窗口拖入 `.md` 后停留在「松开以打开文件」遮罩、文件没真正加载。根因有两个：①Vditor 自身在编辑区注册了 `drop` 监听并 `stopPropagation`，吞掉了 window 层的处理器；②Electron 已经把 `File.path` 这个非标准扩展逐步收敛到 `webUtils.getPathForFile()`，渲染层直读 `f.path` 在新版本会拿到空串。修复办法：window 上的 `dragover/dragleave/drop` 全部改走捕获阶段抢先处理，路径解析下沉到 preload 用 `webUtils.getPathForFile()`，并对老 API 做兜底。
-
-### 新增 Added
-- **右上角主题切换图标**：标题栏右上角加了一个小的主题按钮，点击循环切换：亮色 → 暗色 → 跟随系统。图标统一是一个半亮半暗的小圆，跟随系统模式下整体透明度稍降以做区分；与菜单「视图 › 主题」、`⌘/` 快捷键共用同一套状态。
+- 大纲跳转稳定性：从最初的 `textContent` 模糊匹配迭代到索引绑定 → vditor outline DOM 复用 → capture 委托 + `scrollIntoView` 方案，历时 5 轮修复彻底稳定。
 
 ---
 
 ## [1.1.0] - 2026-06-11
 
 ### 新增 Added
-- **拖拽打开文件**：可将 `.md` 等文件直接拖到窗口内打开（拖动时显示提示遮罩）；也支持拖到 Dock 图标、Finder 双击、以及应用未启动时拖入（冷启动会暂存待应用就绪后自动打开）。
-- **文件关联**：打包后可在 Finder「打开方式」中选择 MarkPad 打开 `.md` / `.markdown` / `.mdown` / `.mkd` / `.mdtext` / `.txt` 文件，并支持设为默认编辑器。
-- **三态主题**：「视图 › 主题」新增 亮色 / 暗色 / 跟随系统 三个选项；偏好持久化保存，下次启动自动恢复。「跟随系统」模式下随系统深浅色实时切换。`⌘/` 可在三种模式间循环。
-
-### 技术细节 Technical
-- `main.js`：将菜单打开、拖拽、Dock、命令行入口统一收敛到 `openFile()`，新增 `pendingOpenPath` + `renderer-ready` 握手解决冷启动拖入丢失；新增 `set-native-theme` 同步 `nativeTheme.themeSource`。
-- `renderer.js`：窗口 `drop` 事件取文件路径交主进程读盘；`themeMode`(light/dark/system) 持久化到 localStorage，监听 `matchMedia` 系统主题变化。
-- `package.json`：新增 `build.fileAssociations` 声明文件类型关联。
-
----
-
-## [1.0.1] - 2026-06-11
+- **拖拽打开文件**：拖 `.md` 到窗口（显示遮罩提示）、拖到 Dock 图标、Finder 双击、冷启动拖入均支持。
+- **文件关联**：可在 Finder「打开方式」选择 MarkPad 打开 `.md` / `.markdown` / `.mdown` / `.mkd` / `.mdtext` / `.txt`，支持设为默认编辑器。
+- **三态主题**：亮色 / 暗色 / 跟随系统，⌘/ 循环切换，偏好持久化，跟随系统时实时响应深浅色变化。
 
 ### 修复 Fixed
-- 修复打开本地 `.md` 文件后编辑区一片空白的问题。根因是打开文件时通过 `vditor.destroy()` + `new Vditor()` 重建实例，而 Vditor 初始化是异步的，销毁旧实例会打断新实例渲染，导致内容已写入（`getValue()` 有值）但 DOM 不显示。改用 `setValue()` 更新内容，并引入 `vditorReady`/`pendingValue` 处理初始化期间的打开请求。
+- 拖拽文件打不开：修复 vditor 吞掉 drop 事件的问题——window 层 dragover/dragleave/drop 全部走捕获阶段，路径解析下沉 preload 用 `webUtils.getPathForFile()`。
+
+---
 
 ## [1.0.0] - 2026-06-11
 
 ### 新增 Added
-- 首个版本：类 Typora 的所见即所得 Markdown 编辑器（Electron + Vditor）。
-- 支持打开/新建/保存本地 Markdown 文件、大纲侧栏、字数统计、明暗主题。
-- 提供 macOS arm64 / x64 双架构 DMG 安装包。
+- 类 Typora 所见即所得 Markdown 编辑器（Electron + Vditor）。
+- 打开/新建/保存本地 Markdown 文件。
+- 大纲侧栏、字数统计、明暗主题。
+- macOS arm64 / x64 双架构 DMG 安装包。
+
+### 修复 Fixed
+- 打开本地 `.md` 文件编辑区空白：改用 `setValue()` 更新内容替代 `destroy()+new Vditor()`，引入 `vditorReady`/`pendingValue` 机制处理初始化期间打开请求。

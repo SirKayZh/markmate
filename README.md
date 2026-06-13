@@ -54,7 +54,7 @@
 - **Extended Markdown** — `==highlight==` · `[^1]` footnotes · `[toc]` directory · CJK auto-spacing · term auto-correction
 - **Code line numbers** — syntax-highlighted code blocks show line numbers on the left
 
-### 📤 Multi-format Export (v1.7.0+)
+### 📤 Multi-format Export (v1.4.0+)
 
 - **PDF** (⌘⇧P) — page-break friendly, zero extra dependencies (uses Electron's built-in `printToPDF`)
 - **HTML** — single-file with full styling, perfect for email or upload
@@ -146,7 +146,7 @@ Issues and PRs are welcome! Ideas for the roadmap:
 
 - [ ] Multiple tabs / windows
 - [ ] Custom CSS themes
-- [x] PDF / HTML / Word / Long image export (v1.7.0)
+- [x] PDF / HTML / Word / Long image export (v1.4.0)
 - [ ] Vim key bindings
 
 ---
