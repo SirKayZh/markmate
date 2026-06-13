@@ -56,8 +56,12 @@ contextBridge.exposeInMainWorld('markpad', {
     const buf = await blob.arrayBuffer();
     return ipcRenderer.invoke('export-docx', { buffer: Array.from(new Uint8Array(buf)) });
   },
-  // png：渲染层 html2canvas → dataURL 传过来
-  exportPng: (dataUrl) => ipcRenderer.invoke('export-png', { dataUrl }),
+  // png：现在改为主进程 capturePage 全页面截图（质量大幅提升）
+  // 用法：渲染层只发起请求，pixelRatio 可选（默认 2，最大 4）
+  exportPng: (pixelRatio) => ipcRenderer.invoke('export-png', { pixelRatio }),
+  // 主进程长图导出过程中会向渲染层索取 html（保证用的是当前 vditor 渲染结果）
+  onRequestPngHtml: (cb) => ipcRenderer.on('request-png-html', () => cb()),
+  sendPngHtml: (html) => ipcRenderer.send('export-png-html', { html }),
   // 渲染层导出 Word/长图时需要的资源（CSS / 文档目录）
   getExportResources: () => ipcRenderer.invoke('get-export-resources'),
   // 在 Finder 中显示图片目录

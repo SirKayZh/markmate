@@ -50,8 +50,17 @@
 ### 🖼️ Images & Extended Syntax
 
 - **Image drag & paste** — drop or paste images into the editor; they auto-save to an `assets/` folder beside your document
+- **Reveal images folder** — File → Show Images Folder in Finder
 - **Extended Markdown** — `==highlight==` · `[^1]` footnotes · `[toc]` directory · CJK auto-spacing · term auto-correction
 - **Code line numbers** — syntax-highlighted code blocks show line numbers on the left
+
+### 📤 Multi-format Export (v1.7.0+)
+
+- **PDF** (⌘⇧P) — page-break friendly, zero extra dependencies (uses Electron's built-in `printToPDF`)
+- **HTML** — single-file with full styling, perfect for email or upload
+- **Word (.docx)** — opens natively in Word/Pages/WPS
+- **Long image (PNG)** — 2x DPI snapshot, ideal for social sharing
+- All formats preserve fonts, code blocks, tables, blockquotes and responsive images
 
 ### 🍎 macOS Integration
 
@@ -66,8 +75,8 @@
 
 Download the latest `.dmg` from the [Releases](https://github.com/SirKayZh/markpad/releases) page:
 
-- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.6.3-arm64.dmg`
-- Intel: `MarkPad-1.6.3-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.7.0-arm64.dmg`
+- Intel: `MarkPad-1.7.0-x64.dmg`
 
 > The app is **not code-signed / notarized**. On first launch, right-click the app → **Open**, or run:
 > ```bash
@@ -137,7 +146,7 @@ Issues and PRs are welcome! Ideas for the roadmap:
 
 - [ ] Multiple tabs / windows
 - [ ] Custom CSS themes
-- [ ] PDF export
+- [x] PDF / HTML / Word / Long image export (v1.7.0)
 - [ ] Vim key bindings
 
 ---

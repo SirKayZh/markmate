@@ -458,20 +458,92 @@ ipcMain.handle('export-docx', async (event, { buffer }) => {
 });
 
 // ---- 长图（PNG）导出 ----
-ipcMain.handle('export-png', async (event, { dataUrl }) => {
+// 用 offscreen BrowserWindow 加载完整 HTML，让 Chromium 原生渲染管线截全图。
+// 比渲染层 html2canvas 质量高得多：中文字体、KaTeX、代码块、emoji 全部 1:1 还原。
+ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath: exportStem() + '.png',
     filters: [{ name: 'PNG 图片', extensions: ['png'] }]
   });
   if (canceled || !filePath) return { saved: false };
+
+  // 先向渲染层要一份"和编辑器一致"的 HTML（含 vditor 渲染后的 DOM）
+  const html = await new Promise((resolve) => {
+    if (!mainWindow) return resolve('');
+    ipcMain.once('export-png-html', (_e, payload) => resolve(payload && payload.html || ''));
+    mainWindow.webContents.send('request-png-html');
+    // 5 秒超时兜底
+    setTimeout(() => resolve(''), 5000);
+  });
+  if (!html) {
+    dialog.showErrorBox('导出长图失败', '获取页面内容超时');
+    return { saved: false };
+  }
+
+  let win = null;
   try {
-    const m = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
-    if (!m) throw new Error('图片数据格式不正确');
-    fs.writeFileSync(filePath, Buffer.from(m[1], 'base64'));
+    const ratio = Math.max(1, Math.min(4, Number(pixelRatio) || 2));
+    const baseWidth = 820;        // 文档可视宽度（和编辑器接近）
+    const winWidth = baseWidth + 80; // 留点 padding
+
+    win = new BrowserWindow({
+      show: false,
+      width: winWidth,
+      height: 800,
+      useContentSize: true,
+      webPreferences: {
+        sandbox: true,
+        offscreen: false,
+        zoomFactor: ratio,       // 让 Chromium 按倍率渲染（更清晰，胜过事后放大）
+      },
+    });
+
+    const fullHtml = wrapExportHtml('export', absolutizeImageSrc(html, docBaseDir()), {
+      // 长图专用：去掉编辑器 max-width / padding 限制由外层 body 控制
+      extraCss: `body{padding:30px 40px;}
+.vditor-reset{max-width:${baseWidth}px;margin:0 auto;}
+/* 字体平滑：在 retina 下细字更清晰 */
+*{ -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+/* 别让代码块横向滚动条出现在截图里 */
+.vditor-reset pre{ overflow:visible; white-space:pre-wrap; word-break:break-word; }`
+    });
+
+    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml);
+    await win.loadURL(dataUrl);
+    // 等字体/图片就绪 + 任何动画落定
+    await new Promise(r => setTimeout(r, 400));
+
+    // 量一下文档实际高度（CSS 像素），然后把窗口 resize 成整页高度
+    const docSize = await win.webContents.executeJavaScript(`
+      (() => {
+        const b = document.body, d = document.documentElement;
+        // 等所有图片加载完
+        const imgs = Array.from(document.images || []);
+        return Promise.all(imgs.map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = i.onerror = r; })))
+          .then(() => ({
+            w: Math.max(b.scrollWidth, d.scrollWidth, b.clientWidth, d.clientWidth),
+            h: Math.max(b.scrollHeight, d.scrollHeight, b.clientHeight, d.clientHeight)
+          }));
+      })()
+    `);
+
+    // 把窗口扩到能装下整篇文档
+    win.setContentSize(
+      Math.max(winWidth, Math.ceil(docSize.w)),
+      Math.ceil(docSize.h) + 4
+    );
+    await new Promise(r => setTimeout(r, 250)); // 等 resize 后重新布局
+
+    const image = await win.webContents.capturePage();
+    // capturePage 在 zoomFactor > 1 时返回的是物理像素，刚好就是我们要的高清
+    const buf = image.toPNG();
+    fs.writeFileSync(filePath, buf);
     return { saved: true, path: filePath };
   } catch (err) {
     dialog.showErrorBox('导出长图失败', String(err));
     return { saved: false };
+  } finally {
+    if (win) try { win.destroy(); } catch (_) {}
   }
 });
 
@@ -480,6 +552,9 @@ ipcMain.handle('get-export-resources', async () => ({
   vditorCss: loadVditorCss(),
   baseDir: docBaseDir(),
 }));
+
+// 渲染层把 vditor.getHTML() 回传给主进程（长图导出用）
+// 注：使用 ipcMain.on（一次性的），由 export-png 里 once 监听
 
 // ---- 在 Finder 中显示图片目录 ----
 ipcMain.handle('reveal-assets-dir', async () => {

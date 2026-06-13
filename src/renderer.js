@@ -936,6 +936,12 @@ window.markpad.onRevealAssetsDir(async () => {
   await window.markpad.revealAssetsDir();
 });
 
+// 主进程长图导出索取当前渲染好的 HTML
+window.markpad.onRequestPngHtml(() => {
+  const html = vditor ? vditor.getHTML() : '';
+  window.markpad.sendPngHtml(html);
+});
+
 // ========= 导出：PDF / HTML / Word / 长图 =========
 // 共用：取得带样式的完整 HTML body（vditor 渲染后的 DOM）
 function getRenderedHtml() {
@@ -1017,34 +1023,9 @@ async function runExport(kind) {
     }
 
     if (kind === 'png') {
-      if (typeof html2canvas === 'undefined') {
-        showQuickToast('❌ html2canvas 未加载');
-        return;
-      }
-      // 在屏幕外渲染一个完整副本，避免编辑器自身布局影响
-      const offscreen = document.createElement('div');
-      offscreen.style.cssText = 'position:fixed;left:-99999px;top:0;width:820px;background:#fff;z-index:-1;';
-      offscreen.innerHTML = `<style>${res.vditorCss || ''}</style>
-<div class="vditor-reset" style="max-width:820px;margin:0;padding:40px;background:#fff;color:#24292e;
-  font-family:-apple-system,'PingFang SC',sans-serif;line-height:1.7;font-size:16px;">${absoluteHtml}</div>`;
-      document.body.appendChild(offscreen);
-      try {
-        // 等图片就绪
-        const imgs = offscreen.querySelectorAll('img');
-        await Promise.all(Array.from(imgs).map(img => img.complete ? Promise.resolve() : new Promise(r => { img.onload = img.onerror = r; })));
-        const canvas = await html2canvas(offscreen.querySelector('.vditor-reset'), {
-          backgroundColor: '#ffffff',
-          scale: 2,                // 2倍清晰
-          useCORS: true,
-          logging: false,
-          windowWidth: 900,
-        });
-        const dataUrl = canvas.toDataURL('image/png');
-        const r = await window.markpad.exportPng(dataUrl);
-        showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : '');
-      } finally {
-        offscreen.remove();
-      }
+      // 主进程长图导出：会发回 'request-png-html' 索取当前 HTML
+      const r = await window.markpad.exportPng(2); // 2x 像素比
+      showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : '');
       return;
     }
   } catch (err) {

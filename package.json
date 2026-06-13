@@ -1,6 +1,6 @@
 {
   "name": "markpad",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "A Typora-like WYSIWYG Markdown editor for macOS, built with Electron + Vditor",
   "main": "main.js",
   "author": "MarkPad Contributors",
@@ -37,8 +37,7 @@
       "preload.js",
       "src/**/*",
       "node_modules/vditor/dist/**/*",
-      "node_modules/html-docx-js/dist/**/*",
-      "node_modules/html2canvas/dist/html2canvas.min.js"
+      "node_modules/html-docx-js/dist/**/*"
     ],
     "mac": {
       "category": "public.app-category.productivity",
@@ -84,7 +83,6 @@
   },
   "dependencies": {
     "html-docx-js": "^0.3.1",
-    "html2canvas": "^1.4.1",
     "vditor": "^3.10.4"
   }
 }
