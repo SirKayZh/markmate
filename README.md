@@ -1,10 +1,10 @@
 # MarkPad ⚡
 
-> A lightweight, distraction-free Markdown editor for macOS — WYSIWYG editing meets powerful navigation and never-lose-your-work safety.
+> A lightweight, distraction-free Markdown editor for **macOS & Windows** — WYSIWYG editing meets powerful navigation and never-lose-your-work safety.
 >
-> 一款轻快专注的 macOS Markdown 编辑器 — 所见即所得 + 强大导航 + 永不丢稿。
+> 一款轻快专注的 **macOS / Windows** Markdown 编辑器 — 所见即所得 + 强大导航 + 永不丢稿。
 
-![platform](https://img.shields.io/badge/platform-macOS-blue)
+![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows-blue)
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
@@ -62,7 +62,7 @@
 - **Long image (PNG)** — 2x DPI snapshot, ideal for social sharing
 - All formats preserve fonts, code blocks, tables, blockquotes and responsive images
 
-### 🍎 macOS Integration
+### 🍎 macOS Integration (also runs on Windows)
 
 - **Drag & drop to open** — drag `.md` files onto the window, Dock icon, or even onto a closed app
 - **File association** — registered handler for `.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt`; set MarkPad as your default editor in Finder
@@ -73,39 +73,50 @@
 
 ## 📦 Install
 
-Download the latest `.dmg` from the [Releases](https://github.com/SirKayZh/markpad/releases) page:
+Download the latest release from the [Releases](https://github.com/SirKayZh/markpad/releases) page:
 
+**macOS:**
 - Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.4.1-arm64.dmg`
 - Intel: `MarkPad-1.4.1-x64.dmg`
 
-> The app is **not code-signed / notarized**. On first launch, right-click the app → **Open**, or run:
-> ```bash
-> xattr -cr /Applications/MarkPad.app
-> ```
+**Windows:**
+- `MarkPad-1.4.1-x64-setup.exe` — NSIS installer (recommended)
+- `MarkPad-1.4.1-x64-portable.exe` — standalone, no install needed
 
-### Set as Default Markdown Editor
+> The app is **not code-signed / notarized** on either platform.
+>
+> **macOS**: right-click app → **Open**, or run `xattr -cr /Applications/MarkPad.app`
+>
+> **Windows**: click **More info** → **Run anyway** when SmartScreen prompts
 
-After installing, right-click any `.md` file in Finder → **Open With** → choose **MarkPad**. To make it permanent, select **Always Open With** or set it in **Get Info**.
+### Set as Default Editor
+
+**macOS:** right-click any `.md` file in Finder → **Open With** → choose **MarkPad**. To make it permanent, select **Always Open With** or set it in **Get Info**.
+
+**Windows:** right-click any `.md` file → **Open with** → choose **MarkPad** → **Always use this app**.
+
+MarkPad also natively opens `.txt` files.
 
 ---
 
 ## ⌨️ Keyboard Shortcuts
 
-| Action | Shortcut |
-| --- | --- |
-| New | ⌘N |
-| Open | ⌘O |
-| Quick Open | ⌘P |
-| Save | ⌘S |
-| Save As | ⌘⇧S |
-| Toggle Favorite | ⌘D |
-| Find in Document | ⌘F |
-| Toggle Outline | ⌘\ |
-| Toggle Source Panel | ⌘E |
-| Focus Mode | ⌘⇧F |
-| Typewriter Mode | ⌘⇧T |
-| Cycle Appearance (Light → Dark → System) | ⌘/ |
-| Cycle Style Theme | ⌘⇧/ |
+| Action | macOS | Windows |
+| --- | --- | --- |
+| New | ⌘N | Ctrl+N |
+| Open | ⌘O | Ctrl+O |
+| Quick Open | ⌘P | Ctrl+P |
+| Save | ⌘S | Ctrl+S |
+| Save As | ⌘⇧S | Ctrl+⇧S |
+| Toggle Favorite | ⌘D | Ctrl+D |
+| Find in Document | ⌘F | Ctrl+F |
+| Toggle Outline | ⌘\ | Ctrl+\ |
+| Toggle Source Panel | ⌘E | Ctrl+E |
+| Focus Mode | ⌘⇧F | Ctrl+⇧F |
+| Typewriter Mode | ⌘⇧T | Ctrl+⇧T |
+| Export PDF | ⌘⇧P | Ctrl+⇧P |
+| Cycle Appearance | ⌘/ | Ctrl+/ |
+| Cycle Style Theme | ⌘⇧/ | Ctrl+⇧/ |
 
 ---
 
@@ -119,22 +130,23 @@ npm start            # launch dev
 MARKPAD_DEBUG=1 npm start  # with DevTools
 ```
 
-### Build DMG
+### Build
 
 ```bash
-npm run dmg            # build current version → release/
+npm run dmg            # build macOS DMG → release/
+npm run win            # build Windows (NSIS + portable) → release/
 npm run release:patch  # bump patch + build + commit + tag
 npm run release:minor  # bump minor + build + commit + tag
 npm run release:major  # bump major + build + commit + tag
 ```
 
-> Note: on Apple Silicon, `electron-builder`'s internal `hdiutil` DMG step may fail due to macOS sandbox restrictions on auto-mounting volumes. The project's build script uses `hdiutil makehybrid` + `convert` as a workaround.
+> **macOS note**: on Apple Silicon, `electron-builder`'s internal `hdiutil` DMG step may fail due to macOS sandbox restrictions on auto-mounting volumes. The project's build script uses `hdiutil makehybrid` + `convert` as a workaround. Windows builds work cross-platform from macOS (electron-builder auto-downloads Wine + NSIS).
 
 ---
 
 ## 🧱 Tech Stack
 
-- **[Electron](https://www.electronjs.org/) 31** — desktop shell
+- **[Electron](https://www.electronjs.org/) 31** — cross-platform desktop shell (macOS + Windows)
 - **[Vditor](https://github.com/Vanessa219/vditor) 3** — Markdown IR (instant rendering) engine
 - Main process `main.js` (menu / file IO / auto-save / version snapshots) + `preload.js` (secure contextBridge IPC) + `src/` (UI)
 
@@ -147,6 +159,7 @@ Issues and PRs are welcome! Ideas for the roadmap:
 - [ ] Multiple tabs / windows
 - [ ] Custom CSS themes
 - [x] PDF / HTML / Word / Long image export (v1.4.0)
+- [x] Windows support (v1.4.1)
 - [ ] Vim key bindings
 
 ---

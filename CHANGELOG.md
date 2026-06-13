@@ -11,6 +11,13 @@
 
 ## [1.4.1] - 2026-06-13
 
+### 新增 Added
+- **🪟 Windows 支持**：MarkPad 现在可在 Windows x64 上运行。
+  - 两种分发格式：`-setup.exe`（NSIS 安装版，可选安装路径、桌面快捷方式）和 `-portable.exe`（免安装即用）。
+  - 在 macOS 上交叉编译，electron-builder 自动下载 Wine + NSIS，无需本机安装 Windows。
+  - 文件关联：`.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt`。
+  - 快捷键自动适配 Windows 风格（Ctrl 取代 ⌘），README 已同步更新双栏快捷键表。
+
 ### 修复 Fixed
 - **长图导出底部被截断**：超过屏幕物理高度的长文档，导出 PNG 末段被齐刷刷裁掉。修复后任意长度文档完整 1:1 截全。
   - 根因：macOS 上 `BrowserWindow.setContentSize` 默认受屏幕物理高度限制，多余高度被静默裁掉；同时 `capturePage()` 不传 rect 时只截当前可视区。
