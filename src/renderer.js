@@ -928,11 +928,130 @@ window.markpad.onRequestSave(async ({ saveAs }) => {
   return res;
 });
 
-window.markpad.onRequestExportHtml(async () => {
-  if (!vditor) return;
-  const html = vditor.getHTML();
-  await window.markpad.exportHtml(html);
+window.markpad.onRequestExport(async (kind) => {
+  await runExport(kind);
 });
+
+window.markpad.onRevealAssetsDir(async () => {
+  await window.markpad.revealAssetsDir();
+});
+
+// ========= 导出：PDF / HTML / Word / 长图 =========
+// 共用：取得带样式的完整 HTML body（vditor 渲染后的 DOM）
+function getRenderedHtml() {
+  if (!vditor) return '';
+  // vditor.getHTML() 返回的是预览 HTML（已是渲染后的 DOM）
+  return vditor.getHTML();
+}
+
+// 把 ./assets/xx 这种相对路径替换成 file:// 绝对路径
+// 渲染层只在 Word/PNG 路径用（PDF/HTML 由主进程统一处理）
+function absolutizeImgsInHtml(html, baseDir) {
+  if (!baseDir) return html;
+  return html.replace(/<img\b([^>]*?)\ssrc=(["'])([^"']+)\2/gi, (m, pre, q, src) => {
+    if (/^(https?:|file:|data:)/i.test(src)) return m;
+    try {
+      // 浏览器侧无 path 模块，简单拼接
+      let abs = src;
+      if (abs.startsWith('./')) abs = abs.slice(2);
+      const sep = baseDir.endsWith('/') ? '' : '/';
+      const url = 'file://' + baseDir + sep + abs;
+      return `<img${pre} src=${q}${url}${q}`;
+    } catch (_) { return m; }
+  });
+}
+
+// 组装一份"和编辑器看起来一样"的 HTML（用于渲染到隐藏容器供截图/转 docx）
+function buildFullHtml(bodyHtml, vditorCss) {
+  const baseCss = `
+body{margin:0;padding:40px;background:#fff;color:#24292e;
+  font-family:-apple-system,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  line-height:1.7;font-size:16px;-webkit-font-smoothing:antialiased;}
+.vditor-reset{max-width:820px;margin:0 auto;}
+.vditor-reset img{max-width:100%;height:auto;}
+.vditor-reset pre{background:#f6f8fa;padding:16px;border-radius:6px;overflow:auto;
+  font-family:"SF Mono",Menlo,Consolas,monospace;font-size:14px;}
+.vditor-reset code{background:rgba(175,184,193,.2);padding:.2em .4em;border-radius:4px;
+  font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.9em;}
+.vditor-reset pre code{background:transparent;padding:0;}
+.vditor-reset table{border-collapse:collapse;margin:16px 0;}
+.vditor-reset table td,.vditor-reset table th{border:1px solid #d0d7de;padding:6px 12px;}
+.vditor-reset blockquote{border-left:4px solid #d0d7de;margin:16px 0;padding:0 16px;color:#57606a;}
+.vditor-reset h1,.vditor-reset h2{border-bottom:1px solid #eaecef;padding-bottom:.3em;}
+`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${vditorCss}\n${baseCss}</style></head>
+<body><div class="vditor-reset">${bodyHtml}</div></body></html>`;
+}
+
+async function runExport(kind) {
+  if (!vditor) return;
+  showQuickToast(`正在导出 ${kind.toUpperCase()}…`);
+  try {
+    const html = getRenderedHtml();
+    if (kind === 'pdf') {
+      const r = await window.markpad.exportPdf(html);
+      showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : '');
+      return;
+    }
+    if (kind === 'html') {
+      const r = await window.markpad.exportHtml(html);
+      showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : '');
+      return;
+    }
+
+    // 以下需要本地资源（CSS / baseDir）
+    const res = await window.markpad.getExportResources();
+    const baseDir = res.baseDir || '';
+    const absoluteHtml = absolutizeImgsInHtml(html, baseDir);
+
+    if (kind === 'docx') {
+      if (typeof htmlDocx === 'undefined' || !htmlDocx.asBlob) {
+        showQuickToast('❌ html-docx-js 未加载');
+        return;
+      }
+      const full = buildFullHtml(absoluteHtml, res.vditorCss || '');
+      const blob = htmlDocx.asBlob(full);
+      const r = await window.markpad.exportDocx(blob);
+      showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : '');
+      return;
+    }
+
+    if (kind === 'png') {
+      if (typeof html2canvas === 'undefined') {
+        showQuickToast('❌ html2canvas 未加载');
+        return;
+      }
+      // 在屏幕外渲染一个完整副本，避免编辑器自身布局影响
+      const offscreen = document.createElement('div');
+      offscreen.style.cssText = 'position:fixed;left:-99999px;top:0;width:820px;background:#fff;z-index:-1;';
+      offscreen.innerHTML = `<style>${res.vditorCss || ''}</style>
+<div class="vditor-reset" style="max-width:820px;margin:0;padding:40px;background:#fff;color:#24292e;
+  font-family:-apple-system,'PingFang SC',sans-serif;line-height:1.7;font-size:16px;">${absoluteHtml}</div>`;
+      document.body.appendChild(offscreen);
+      try {
+        // 等图片就绪
+        const imgs = offscreen.querySelectorAll('img');
+        await Promise.all(Array.from(imgs).map(img => img.complete ? Promise.resolve() : new Promise(r => { img.onload = img.onerror = r; })));
+        const canvas = await html2canvas(offscreen.querySelector('.vditor-reset'), {
+          backgroundColor: '#ffffff',
+          scale: 2,                // 2倍清晰
+          useCORS: true,
+          logging: false,
+          windowWidth: 900,
+        });
+        const dataUrl = canvas.toDataURL('image/png');
+        const r = await window.markpad.exportPng(dataUrl);
+        showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : '');
+      } finally {
+        offscreen.remove();
+      }
+      return;
+    }
+  } catch (err) {
+    console.error('[export]', err);
+    showQuickToast(`❌ 导出失败：${err.message || err}`);
+  }
+}
 
 window.markpad.onToggleOutline(() => toggleOutline());
 window.markpad.onToggleSource(() => toggleSource());

@@ -332,17 +332,166 @@ function doNew() {
   mainWindow.webContents.send('file-new');
 }
 
-// 导出 HTML
+// ============ 导出 ============
+// 缺省文件名（去扩展名）
+function exportStem() {
+  return currentFilePath
+    ? path.basename(currentFilePath, path.extname(currentFilePath))
+    : '未命名';
+}
+// 文档同目录（用来解析 ./assets/xx 的相对路径）
+function docBaseDir() {
+  return currentFilePath ? path.dirname(currentFilePath) : null;
+}
+// 把 html 中 <img src="./assets/xx"> 转成 file:// 绝对路径
+// PDF/长图/Word 渲染时图片必须可解析
+function absolutizeImageSrc(html, baseDir) {
+  if (!baseDir) return html;
+  return html.replace(/<img\b([^>]*?)\ssrc=(["'])([^"']+)\2/gi, (m, pre, q, src) => {
+    if (/^(https?:|file:|data:)/i.test(src)) return m;
+    try {
+      const abs = path.resolve(baseDir, src);
+      const url = 'file://' + abs.split(path.sep).join('/');
+      return `<img${pre} src=${q}${url}${q}`;
+    } catch (_) { return m; }
+  });
+}
+// 加载 vditor 预览样式（一次性缓存）
+let cachedVditorCss = null;
+function loadVditorCss() {
+  if (cachedVditorCss !== null) return cachedVditorCss;
+  try {
+    const cssPath = path.join(__dirname, 'node_modules', 'vditor', 'dist', 'index.css');
+    cachedVditorCss = fs.readFileSync(cssPath, 'utf-8');
+  } catch (_) { cachedVditorCss = ''; }
+  return cachedVditorCss;
+}
+// 通用 HTML 包装：注入 vditor 样式 + 基础排版 + 打印优化
+function wrapExportHtml(title, bodyHtml, opts = {}) {
+  const css = loadVditorCss();
+  const baseCss = `
+body{margin:0;padding:40px;background:#fff;color:#24292e;
+  font-family:-apple-system,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  line-height:1.7;font-size:16px;-webkit-font-smoothing:antialiased;}
+.vditor-reset{max-width:820px;margin:0 auto;}
+.vditor-reset img{max-width:100%;height:auto;}
+.vditor-reset pre{background:#f6f8fa;padding:16px;border-radius:6px;overflow:auto;
+  font-family:"SF Mono",Menlo,Consolas,monospace;font-size:14px;}
+.vditor-reset code{background:rgba(175,184,193,.2);padding:.2em .4em;border-radius:4px;
+  font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.9em;}
+.vditor-reset pre code{background:transparent;padding:0;}
+.vditor-reset table{border-collapse:collapse;margin:16px 0;}
+.vditor-reset table td,.vditor-reset table th{border:1px solid #d0d7de;padding:6px 12px;}
+.vditor-reset blockquote{border-left:4px solid #d0d7de;margin:16px 0;padding:0 16px;color:#57606a;}
+.vditor-reset h1,.vditor-reset h2{border-bottom:1px solid #eaecef;padding-bottom:.3em;}
+@media print{
+  body{padding:0;}
+  .vditor-reset{max-width:none;}
+  pre,blockquote,table,img{page-break-inside:avoid;}
+  h1,h2,h3,h4{page-break-after:avoid;}
+}
+`;
+  return `<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>${title}</title><style>${css}\n${baseCss}\n${opts.extraCss || ''}</style></head><body><div class="vditor-reset">${bodyHtml}</div></body></html>`;
+}
+
+// ---- HTML 导出 ----
 ipcMain.handle('export-html', async (event, { html }) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: (currentFilePath ? path.basename(currentFilePath, path.extname(currentFilePath)) : '未命名') + '.html',
+    defaultPath: exportStem() + '.html',
     filters: [{ name: 'HTML', extensions: ['html'] }]
   });
   if (canceled || !filePath) return { saved: false };
-  const full = `<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>${path.basename(filePath)}</title>
-<style>body{max-width:800px;margin:40px auto;padding:0 20px;font-family:-apple-system,'PingFang SC',sans-serif;line-height:1.7;color:#333}pre{background:#f6f8fa;padding:12px;border-radius:6px;overflow:auto}code{background:#f0f0f0;padding:2px 4px;border-radius:3px}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px 12px}blockquote{border-left:4px solid #ddd;margin:0;padding-left:16px;color:#666}img{max-width:100%}</style></head><body>${html}</body></html>`;
-  fs.writeFileSync(filePath, full, 'utf-8');
-  return { saved: true, path: filePath };
+  try {
+    const finalHtml = wrapExportHtml(path.basename(filePath), absolutizeImageSrc(html, docBaseDir()));
+    fs.writeFileSync(filePath, finalHtml, 'utf-8');
+    return { saved: true, path: filePath };
+  } catch (err) {
+    dialog.showErrorBox('导出 HTML 失败', String(err));
+    return { saved: false };
+  }
+});
+
+// ---- PDF 导出（Electron printToPDF，零额外依赖）----
+ipcMain.handle('export-pdf', async (event, { html }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: exportStem() + '.pdf',
+    filters: [{ name: 'PDF', extensions: ['pdf'] }]
+  });
+  if (canceled || !filePath) return { saved: false };
+  let pdfWin = null;
+  try {
+    const fullHtml = wrapExportHtml(path.basename(filePath), absolutizeImageSrc(html, docBaseDir()));
+    pdfWin = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml);
+    await pdfWin.loadURL(dataUrl);
+    await new Promise(r => setTimeout(r, 250)); // 等字体/图片就位
+    const data = await pdfWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      margins: { marginType: 'custom', top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 }
+    });
+    fs.writeFileSync(filePath, data);
+    return { saved: true, path: filePath };
+  } catch (err) {
+    dialog.showErrorBox('导出 PDF 失败', String(err));
+    return { saved: false };
+  } finally {
+    if (pdfWin) try { pdfWin.destroy(); } catch (_) {}
+  }
+});
+
+// ---- Word (.docx) 导出 ----
+// 渲染层用 html-docx-js 生成 Blob 字节数组传过来；主进程负责选路径 + 写盘
+ipcMain.handle('export-docx', async (event, { buffer }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: exportStem() + '.docx',
+    filters: [{ name: 'Word 文档', extensions: ['docx'] }]
+  });
+  if (canceled || !filePath) return { saved: false };
+  try {
+    fs.writeFileSync(filePath, Buffer.from(buffer));
+    return { saved: true, path: filePath };
+  } catch (err) {
+    dialog.showErrorBox('导出 Word 失败', String(err));
+    return { saved: false };
+  }
+});
+
+// ---- 长图（PNG）导出 ----
+ipcMain.handle('export-png', async (event, { dataUrl }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: exportStem() + '.png',
+    filters: [{ name: 'PNG 图片', extensions: ['png'] }]
+  });
+  if (canceled || !filePath) return { saved: false };
+  try {
+    const m = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
+    if (!m) throw new Error('图片数据格式不正确');
+    fs.writeFileSync(filePath, Buffer.from(m[1], 'base64'));
+    return { saved: true, path: filePath };
+  } catch (err) {
+    dialog.showErrorBox('导出长图失败', String(err));
+    return { saved: false };
+  }
+});
+
+// ---- 渲染层导出 Word/长图时需要：完整 CSS + 文档目录 ----
+ipcMain.handle('get-export-resources', async () => ({
+  vditorCss: loadVditorCss(),
+  baseDir: docBaseDir(),
+}));
+
+// ---- 在 Finder 中显示图片目录 ----
+ipcMain.handle('reveal-assets-dir', async () => {
+  const baseDir = currentFilePath ? path.dirname(currentFilePath) : app.getPath('temp');
+  const assetsDir = path.join(baseDir, 'assets');
+  try {
+    if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
+    shell.openPath(assetsDir);
+    return { ok: true, path: assetsDir };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
 });
 
 // ============ 菜单 ============
@@ -375,8 +524,17 @@ function buildMenu() {
         { type: 'separator' },
         { label: '历史版本…', click: () => mainWindow.webContents.send('show-versions') },
         { label: '在 Finder 中显示历史目录', click: () => shell.openPath(path.join(app.getPath('userData'), 'history')) },
+        { label: '在 Finder 中显示图片目录', click: () => mainWindow.webContents.send('reveal-assets-dir') },
         { type: 'separator' },
-        { label: '导出 HTML…', click: () => mainWindow.webContents.send('request-export-html') }
+        {
+          label: '导出',
+          submenu: [
+            { label: 'PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: () => mainWindow.webContents.send('request-export', 'pdf') },
+            { label: 'HTML…', click: () => mainWindow.webContents.send('request-export', 'html') },
+            { label: 'Word…', click: () => mainWindow.webContents.send('request-export', 'docx') },
+            { label: '长图（PNG）…', click: () => mainWindow.webContents.send('request-export', 'png') }
+          ]
+        }
       ]
     },
     {

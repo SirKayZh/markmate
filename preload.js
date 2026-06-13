@@ -23,7 +23,6 @@ contextBridge.exposeInMainWorld('markpad', {
   onToggleSource: (cb) => ipcRenderer.on('toggle-source', () => cb()),
   onToggleTheme: (cb) => ipcRenderer.on('toggle-theme', () => cb()),
   onSetTheme: (cb) => ipcRenderer.on('set-theme', (e, mode) => cb(mode)),
-  onRequestExportHtml: (cb) => ipcRenderer.on('request-export-html', () => cb()),
   // 专注模式 / 打字机模式 / 样式主题
   onToggleFocusMode: (cb) => ipcRenderer.on('toggle-focus-mode', () => cb()),
   onToggleTypewriterMode: (cb) => ipcRenderer.on('toggle-typewriter-mode', () => cb()),
@@ -35,6 +34,11 @@ contextBridge.exposeInMainWorld('markpad', {
   // 内容搜索 / 版本历史
   onShowFind: (cb) => ipcRenderer.on('show-find', () => cb()),
   onShowVersions: (cb) => ipcRenderer.on('show-versions', () => cb()),
+  // 导出（统一入口：'pdf' | 'html' | 'docx' | 'png'）
+  onRequestExport: (cb) => ipcRenderer.on('request-export', (e, kind) => cb(kind)),
+  // 兼容旧入口（菜单还在用 onRequestExportHtml 的地方不会爆）
+  onRequestExportHtml: (cb) => ipcRenderer.on('request-export', (e, kind) => { if (kind === 'html') cb(); }),
+  onRevealAssetsDir: (cb) => ipcRenderer.on('reveal-assets-dir', () => cb()),
   // 关闭前主进程问询
   onConfirmClose: (cb) => ipcRenderer.on('confirm-close', () => cb()),
 
@@ -46,6 +50,18 @@ contextBridge.exposeInMainWorld('markpad', {
   checkDraft: () => ipcRenderer.invoke('check-draft'),
   discardDraft: (draftPath) => ipcRenderer.invoke('discard-draft', { draftPath }),
   exportHtml: (html) => ipcRenderer.invoke('export-html', { html }),
+  exportPdf: (html) => ipcRenderer.invoke('export-pdf', { html }),
+  // docx：渲染层用 html-docx-js 生成 Blob，转 Uint8Array 传过来
+  exportDocx: async (blob) => {
+    const buf = await blob.arrayBuffer();
+    return ipcRenderer.invoke('export-docx', { buffer: Array.from(new Uint8Array(buf)) });
+  },
+  // png：渲染层 html2canvas → dataURL 传过来
+  exportPng: (dataUrl) => ipcRenderer.invoke('export-png', { dataUrl }),
+  // 渲染层导出 Word/长图时需要的资源（CSS / 文档目录）
+  getExportResources: () => ipcRenderer.invoke('get-export-resources'),
+  // 在 Finder 中显示图片目录
+  revealAssetsDir: () => ipcRenderer.invoke('reveal-assets-dir'),
   setDirty: (dirty) => ipcRenderer.send('set-dirty', dirty),
   openDroppedFile: (filePath) => ipcRenderer.send('open-dropped-file', filePath),
   // 渲染层只把 File 对象交给 preload，这里解析出真实路径再投递给主进程
