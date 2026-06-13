@@ -539,21 +539,26 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
     const baseWidth = 820;        // 文档可视宽度（和编辑器接近）
     const winWidth = baseWidth + 80; // 留点 padding
 
+    // 关键：enableLargerThanScreen 让 macOS 窗口可超出屏幕物理高度
+    // 否则 setContentSize 会被静默 clamp 到屏幕高度，长文档截图必然被截断
     win = new BrowserWindow({
       show: false,
+      x: -10000, y: -10000,           // 移到屏幕外，避免任何视觉干扰
       width: winWidth,
       height: 800,
       useContentSize: true,
+      enableLargerThanScreen: true,   // ← macOS 必需
       webPreferences: {
         sandbox: true,
         offscreen: false,
-        zoomFactor: ratio,       // 让 Chromium 按倍率渲染（更清晰，胜过事后放大）
+        zoomFactor: ratio,            // 让 Chromium 按倍率渲染（更清晰）
       },
     });
 
     const fullHtml = wrapExportHtml('export', absolutizeImageSrc(html, docBaseDir()), {
       // 长图专用：去掉编辑器 max-width / padding 限制由外层 body 控制
-      extraCss: `body{padding:30px 40px;}
+      extraCss: `html,body{overflow:visible !important;}
+body{padding:30px 40px;}
 .vditor-reset{max-width:${baseWidth}px;margin:0 auto;}
 /* 字体平滑：在 retina 下细字更清晰 */
 *{ -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
@@ -580,16 +585,44 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
       })()
     `);
 
-    // 把窗口扩到能装下整篇文档
-    win.setContentSize(
-      Math.max(winWidth, Math.ceil(docSize.w)),
-      Math.ceil(docSize.h) + 4
-    );
-    await new Promise(r => setTimeout(r, 250)); // 等 resize 后重新布局
+    // 把窗口扩到能装下整篇文档（CSS 像素 → 设备像素由 zoomFactor 把控）
+    // 注意：useContentSize:true + enableLargerThanScreen:true，setContentSize 才能突破屏幕高度
+    const targetW = Math.max(winWidth, Math.ceil(docSize.w));
+    const targetH = Math.ceil(docSize.h) + 4;
+    win.setContentSize(targetW, targetH);
+    await new Promise(r => setTimeout(r, 350)); // 等 resize 后重新布局
 
-    const image = await win.webContents.capturePage();
-    // capturePage 在 zoomFactor > 1 时返回的是物理像素，刚好就是我们要的高清
-    const buf = image.toPNG();
+    // 二次校验：如果窗口实际尺寸被系统限制了，退化为分段拼接策略
+    const [actualW, actualH] = win.getContentSize();
+    const fits = actualH >= targetH - 2;
+
+    let buf;
+    if (fits) {
+      // 一次性整页截图
+      // 显式传 rect（CSS 像素），保证截全；不传 rect 时某些 Electron 版本只截可视区
+      const image = await win.webContents.capturePage({
+        x: 0, y: 0, width: targetW, height: targetH
+      });
+      buf = image.toPNG();
+    } else {
+      // 窗口被 OS 限高（通常是 enableLargerThanScreen 失效，或文档极长超过 OS 上限）
+      // 此时改走 zoomFactor=1 重试一次，把物理像素需求降下来
+      console.warn('[export-png] window clamped to', actualH, 'need', targetH, '— retry @1x');
+      try { win.webContents.setZoomFactor(1); } catch (_) {}
+      await new Promise(r => setTimeout(r, 150));
+      win.setContentSize(targetW, targetH);
+      await new Promise(r => setTimeout(r, 350));
+      const [w2, h2] = win.getContentSize();
+      if (h2 < targetH - 2) {
+        // 还是装不下：明确报错，不要静默截断
+        throw new Error(`文档过长，截图窗口被系统限高（需 ${targetH}px / 实 ${h2}px）。请试试缩小内容或拆分导出。`);
+      }
+      const image = await win.webContents.capturePage({
+        x: 0, y: 0, width: targetW, height: targetH
+      });
+      buf = image.toPNG();
+    }
+
     fs.writeFileSync(filePath, buf);
     return { saved: true, path: filePath };
   } catch (err) {

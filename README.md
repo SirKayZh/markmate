@@ -75,8 +75,8 @@
 
 Download the latest `.dmg` from the [Releases](https://github.com/SirKayZh/markpad/releases) page:
 
-- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.7.0-arm64.dmg`
-- Intel: `MarkPad-1.7.0-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.4.1-arm64.dmg`
+- Intel: `MarkPad-1.4.1-x64.dmg`
 
 > The app is **not code-signed / notarized**. On first launch, right-click the app → **Open**, or run:
 > ```bash

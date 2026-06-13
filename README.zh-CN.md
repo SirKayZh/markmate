@@ -73,8 +73,8 @@
 
 从 [Releases](https://github.com/SirKayZh/markpad/releases) 页面下载最新的 `.dmg`：
 
-- Apple 芯片（M1/M2/M3/M4…）：`MarkPad-1.7.0-arm64.dmg`
-- Intel：`MarkPad-1.7.0-x64.dmg`
+- Apple 芯片（M1/M2/M3/M4…）：`MarkPad-1.4.1-arm64.dmg`
+- Intel：`MarkPad-1.4.1-x64.dmg`
 
 > 应用**未经过代码签名 / 公证**。首次打开时请右键点击应用 → **打开**，或运行：
 > ```bash
