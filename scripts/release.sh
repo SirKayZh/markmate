@@ -55,7 +55,7 @@ bash scripts/build-dmg.sh
 
 # git 提交 + 打 tag
 echo "==> 提交并打 tag v$NEW"
-git add -A
+git add package.json CHANGELOG.md
 git commit -m "release: v$NEW" >/dev/null 2>&1 || echo "    （无改动可提交，跳过 commit）"
 if git rev-parse "v$NEW" >/dev/null 2>&1; then
   echo "    tag v$NEW 已存在，跳过"
