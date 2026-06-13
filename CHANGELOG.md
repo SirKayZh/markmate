@@ -9,6 +9,15 @@
 
 ---
 
+## [1.4.1] - 2026-06-13
+
+### 修复 Fixed
+- **长图导出底部被截断**：超过屏幕物理高度的长文档，导出 PNG 末段被齐刷刷裁掉。修复后任意长度文档完整 1:1 截全。
+  - 根因：macOS 上 `BrowserWindow.setContentSize` 默认受屏幕物理高度限制，多余高度被静默裁掉；同时 `capturePage()` 不传 rect 时只截当前可视区。
+  - 修复：截图窗口启用 `enableLargerThanScreen`（macOS 必需），`capturePage` 显式传入完整 rect，并在 resize 后做高度二次校验，无法装下时退化重试或显式报错——不再静默截断。
+
+---
+
 ## [1.4.0] - 2026-06-13
 
 ### 新增 Added
