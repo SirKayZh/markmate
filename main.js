@@ -5,6 +5,9 @@ const fs = require('fs');
 let mainWindow = null;
 // 记录每个窗口当前打开的文件路径
 let currentFilePath = null;
+// 当前代码文件模式：null = markdown 文件；否则 { lang } 表示当前打开的是 xml/json/jsonl/yaml/yml
+// —— 这层信息让 save/auto-save 知道要把"围栏代码块"反向剥成原始文本写回，而不是 .md 全文写回
+let currentCodeMode = null;
 // 当前是否脏（渲染层告知，主进程缓存一份供关闭确认使用）
 let currentDirty = false;
 // 冷启动时（窗口/渲染进程尚未就绪）通过 open-file / 命令行传入的待打开文件
@@ -66,12 +69,83 @@ function createWindow() {
   });
 }
 
+// ============ 代码文件支持（xml/json/jsonl/yaml/yml）============
+// 设计理念：代码模式在渲染层用纯 textarea 编辑，不经过 vditor。
+//   理由：vditor IR 模式不擅长扛 150KB+ 的单个超大代码块（如 package-lock.json）
+//        会反复触发增量解析、DOM 暴涨到几 MB，最终页面卡死。
+//   主进程职责：识别扩展名 → 把原文交给渲染层；保存时直接写盘；格式化按语言调专门函数
+const CODE_LANG_BY_EXT = {
+  '.xml':   'xml',
+  '.json':  'json',
+  '.jsonl': 'jsonl',
+  '.yml':   'yaml',
+  '.yaml':  'yaml',
+};
+const CODE_EXT_LIST = Object.keys(CODE_LANG_BY_EXT).map(e => e.slice(1));
+function detectCodeLang(fp) {
+  if (!fp) return null;
+  const ext = path.extname(fp).toLowerCase();
+  return CODE_LANG_BY_EXT[ext] || null;
+}
+// 简易格式化（不引入新依赖；够日常配置文件用）
+function formatCodeText(raw, codeLang) {
+  const src = raw == null ? '' : String(raw);
+  try {
+    if (codeLang === 'json') {
+      const obj = JSON.parse(src);
+      const out = JSON.stringify(obj, null, 2) + '\n';
+      return { ok: true, text: out, changed: out !== src };
+    }
+    if (codeLang === 'jsonl') {
+      // jsonl 习惯每行单独一个紧凑 JSON 对象，逐行规整
+      const lines = src.split(/\r?\n/);
+      const out = lines.map(line => {
+        const t = line.trim();
+        if (!t) return '';
+        try { return JSON.stringify(JSON.parse(t)); }
+        catch (_) { return line; }
+      }).filter((v, i, arr) => !(v === '' && i === arr.length - 1)).join('\n') + '\n';
+      return { ok: true, text: out, changed: out !== src };
+    }
+    if (codeLang === 'xml') {
+      // 极简 XML pretty：压扁空白后按 tag 重排缩进
+      // 不解析 CDATA / 实体，仅满足"看得过去"，复杂 XML 用户自行用专业工具
+      const flat = src.replace(/>\s+</g, '><').trim();
+      if (!flat) return { ok: true, text: '', changed: false };
+      let indent = 0;
+      const out = flat.replace(/<[^>]+>[^<]*/g, (chunk) => {
+        const tagEnd = chunk.indexOf('>') + 1;
+        const tag = chunk.slice(0, tagEnd);
+        const text = chunk.slice(tagEnd);
+        const isClose = /^<\//.test(tag);
+        const isVoid = /\/>$/.test(tag) || /^<\?/.test(tag) || /^<!/.test(tag);
+        if (isClose) indent = Math.max(0, indent - 1);
+        const line = '  '.repeat(indent) + tag + text + '\n';
+        if (!isClose && !isVoid) indent += 1;
+        return line;
+      });
+      return { ok: true, text: out, changed: out !== src };
+    }
+    if (codeLang === 'yaml') {
+      // 暂不引入 js-yaml；提示用户 YAML 不做自动格式化
+      return { ok: false, text: src, changed: false, error: 'YAML 暂不支持自动格式化（避免引入额外依赖），可手动整理' };
+    }
+    return { ok: false, text: src, changed: false, error: '不支持该语言的格式化' };
+  } catch (err) {
+    return { ok: false, text: src, changed: false, error: err && err.message || String(err) };
+  }
+}
+
 // ============ 文件操作辅助 ============
 function setTitle(filePath, dirty) {
   if (!mainWindow) return;
   const name = filePath ? path.basename(filePath) : '未命名';
   mainWindow.setTitle(`${dirty ? '• ' : ''}${name} — MarkPad`);
-  mainWindow.setRepresentedFilename(filePath || '');
+  // 代理图标（红绿灯左侧的小文件 icon）：必须传 absolute path 才能显示
+  // 之前传相对路径（比如 "README.md"）会被 macOS 忽略 → 图标空缺
+  // 真实场景：用户从 vditor.openFileByPath('README.md') 这种相对路径过来
+  const absPath = filePath && path.isAbsolute(filePath) ? filePath : (filePath ? path.resolve(filePath) : '');
+  mainWindow.setRepresentedFilename(absPath);
   mainWindow.setDocumentEdited(!!dirty);
 }
 
@@ -80,6 +154,7 @@ async function doOpen() {
     properties: ['openFile'],
     filters: [
       { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'txt'] },
+      { name: '代码/配置文件', extensions: CODE_EXT_LIST },
       { name: '所有文件', extensions: ['*'] }
     ]
   });
@@ -93,17 +168,26 @@ function openFile(fp) {
   // 窗口/渲染进程还没就绪：先记下，待 renderer-ready 后再打开（解决冷启动拖入丢失）
   if (!mainWindow || !rendererReady) {
     pendingOpenPath = fp;
-    // app 尚未 ready 时不能建窗口（macOS open-file 可能早于 ready 触发），交给 whenReady 处理
     if (!mainWindow && app.isReady()) createWindow();
     return;
   }
   try {
     const rawContent = fs.readFileSync(fp, 'utf-8');
     currentFilePath = fp;
+    // 识别是否代码/配置文件 → 进入"代码模式"。代码模式不走 vditor 围栏方案
+    // —— 后者在 150KB+ 大文件上会卡死（vditor IR 增量解析爆炸：305KB 文本 → 846KB DOM）
+    // 直接把原文交给渲染层的 textarea 编辑区，瞬开、滚动顺滑
+    const codeLang = detectCodeLang(fp);
+    currentCodeMode = codeLang ? { lang: codeLang } : null;
     setTitle(fp, false);
-    // 把相对路径的图片展开为 file:// 绝对路径（仅用于编辑器内显示，磁盘里不变）
-    const content = expandImagePaths(rawContent, fp);
-    mainWindow.webContents.send('file-opened', { path: fp, content });
+    const content = codeLang
+      ? rawContent                          // 代码模式：原文直送 textarea
+      : expandImagePaths(rawContent, fp);   // markdown 模式：展开相对路径图片为 file://
+    mainWindow.webContents.send('file-opened', {
+      path: fp,
+      content,
+      codeMode: currentCodeMode
+    });
     app.addRecentDocument(fp);
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
@@ -113,8 +197,16 @@ function openFile(fp) {
 }
 
 function writeFile(fp, content) {
-  // 把图片的 file:// 绝对路径转成相对 md 文件的相对路径（前提是同盘且在 assets/ 内）
-  // ——这样图片可随 md 文件迁移，移到别的电脑也不会失效
+  // 代码文件模式：渲染层的 textarea 内容就是原始文本，直接写盘
+  if (currentCodeMode) {
+    fs.writeFileSync(fp, content == null ? '' : String(content), 'utf-8');
+    currentFilePath = fp;
+    setTitle(fp, false);
+    app.addRecentDocument(fp);
+    clearDraftIfAny();
+    return;
+  }
+  // markdown 模式：图片路径归一化（保证 md 可移植）
   const normalized = normalizeImagePaths(content, fp);
   fs.writeFileSync(fp, normalized, 'utf-8');
   currentFilePath = fp;
@@ -181,17 +273,27 @@ async function doSaveAs() {
 ipcMain.handle('save-content', async (event, { content, saveAs }) => {
   let fp = currentFilePath;
   if (saveAs || !fp) {
+    // 代码模式 → 默认扩展名跟当前文件类型一致；markdown 模式 → .md
+    const isCode = !!currentCodeMode;
+    const defaultExt = isCode ? path.extname(currentFilePath || '') || '.txt' : '.md';
+    const defaultName = fp ? path.basename(fp) : ('未命名' + defaultExt);
+    const filters = isCode
+      ? [{ name: '代码/配置文件', extensions: CODE_EXT_LIST }, { name: '所有文件', extensions: ['*'] }]
+      : [{ name: 'Markdown', extensions: ['md'] }];
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-      defaultPath: fp || '未命名.md',
-      filters: [{ name: 'Markdown', extensions: ['md'] }]
+      defaultPath: defaultName,
+      filters,
     });
     if (canceled || !filePath) return { saved: false };
     fp = filePath;
   }
   try {
     writeFile(fp, content);
-    // 快照存的是磁盘上的归一化版本（相对路径），保证版本恢复后路径仍然有效
-    snapshotVersion(fp, normalizeImagePaths(content, fp));
+    // 快照：代码模式存原文；markdown 模式存归一化后的相对路径版本
+    const snapText = currentCodeMode
+      ? String(content || '')
+      : normalizeImagePaths(content, fp);
+    snapshotVersion(fp, snapText);
     return { saved: true, path: fp };
   } catch (err) {
     dialog.showErrorBox('保存失败', String(err));
@@ -205,12 +307,14 @@ ipcMain.handle('save-content', async (event, { content, saveAs }) => {
 ipcMain.handle('auto-save', async (event, { content }) => {
   try {
     if (currentFilePath) {
-      // 命名文件：直接保存（writeFile 内部已做相对路径归一化）
       writeFile(currentFilePath, content);
-      snapshotVersion(currentFilePath, normalizeImagePaths(content, currentFilePath));
+      const snapText = currentCodeMode
+        ? String(content || '')
+        : normalizeImagePaths(content, currentFilePath);
+      snapshotVersion(currentFilePath, snapText);
       return { saved: true, autoSaved: true, path: currentFilePath };
     } else {
-      // 未命名：写到草稿目录
+      // 未命名草稿（代码模式下通常不会出现：用户必须先打开一个文件才进代码模式）
       saveDraft(content);
       return { saved: false, draft: true };
     }
@@ -218,6 +322,14 @@ ipcMain.handle('auto-save', async (event, { content }) => {
     console.error('[auto-save]', err);
     return { saved: false, error: String(err) };
   }
+});
+
+// 代码文件格式化：渲染层传 textarea 原文，主进程返回格式化后的原文
+ipcMain.handle('format-code', async (event, { content }) => {
+  if (!currentCodeMode) return { ok: false, error: '当前不是代码文件' };
+  const r = formatCodeText(content, currentCodeMode.lang);
+  if (!r.ok) return { ok: false, error: r.error || '格式化失败' };
+  return { ok: true, content: r.text, changed: r.changed };
 });
 
 // 版本历史：列出指定文件的快照
@@ -243,8 +355,16 @@ ipcMain.handle('list-versions', async (event, { filePath } = {}) => {
 ipcMain.handle('read-version', async (event, { versionPath }) => {
   try {
     const raw = fs.readFileSync(versionPath, 'utf-8');
-    // 版本快照里是相对路径，恢复到编辑器前要展开成 file:// 让图片可见
-    const content = currentFilePath ? expandImagePaths(raw, currentFilePath) : raw;
+    let content;
+    if (currentCodeMode) {
+      // 代码模式：快照里就是原文，直接交给 textarea
+      content = raw;
+    } else if (currentFilePath) {
+      // markdown 模式：把相对路径图片展成 file:// 让编辑器可见
+      content = expandImagePaths(raw, currentFilePath);
+    } else {
+      content = raw;
+    }
     return { ok: true, content };
   } catch (err) {
     return { ok: false, error: String(err) };
@@ -381,6 +501,7 @@ ipcMain.on('confirm-close-reply', (event, payload) => {
 // 新建
 function doNew() {
   currentFilePath = null;
+  currentCodeMode = null;
   setTitle(null, false);
   mainWindow.webContents.send('file-new');
 }
@@ -791,13 +912,14 @@ ipcMain.on('set-native-theme', (event, mode) => {
   }
 });
 
-// 列出目录内容（返回 md/txt 文件）
+// 列出目录内容（返回 md/txt + 已支持的代码/配置文件）
 ipcMain.handle('list-directory', async (event, dirPath) => {
   try {
     if (!dirPath || !fs.existsSync(dirPath)) return [];
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    const codeExtRe = new RegExp(`\\.(${CODE_EXT_LIST.join('|')})$`, 'i');
     return entries
-      .filter(e => e.isDirectory() || /\.(md|markdown|mdown|mkd|txt)$/i.test(e.name))
+      .filter(e => e.isDirectory() || /\.(md|markdown|mdown|mkd|txt)$/i.test(e.name) || codeExtRe.test(e.name))
       .map(e => ({ name: e.name, isDir: e.isDirectory(), path: path.join(dirPath, e.name) }))
       .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : (a.isDir ? -1 : 1)));
   } catch (_) { return []; }
@@ -851,9 +973,10 @@ ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }
 function fileFromArgv(argv) {
   // 跳过可执行文件本身与 electron 的 flag 参数
   const args = argv.slice(app.isPackaged ? 1 : 2);
+  const codeExtRe = new RegExp(`\\.(${CODE_EXT_LIST.join('|')})$`, 'i');
   for (const a of args) {
     if (a.startsWith('-')) continue;
-    if (/\.(md|markdown|mdown|txt)$/i.test(a) && fs.existsSync(a)) return a;
+    if ((/\.(md|markdown|mdown|txt)$/i.test(a) || codeExtRe.test(a)) && fs.existsSync(a)) return a;
   }
   return null;
 }

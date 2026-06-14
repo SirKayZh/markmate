@@ -71,8 +71,8 @@ html, body {
 }
 
 #theme-toggle { right: 10px; }
-#source-toggle { right: 40px; }
-#find-btn { right: 70px; }
+#find-btn { right: 40px; }
+#source-toggle { right: 100px; }
 #source-toggle.active { color: var(--accent); background: rgba(76, 139, 245, 0.12); }
 
 /* 用透明度区分三种模式：跟随系统稍微淡一些以示"自动" */
@@ -90,8 +90,9 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   background: var(--bg-soft);
-  overflow-y: auto;
-  padding: 12px 0 12px 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;           /* 滚动交给子元素（#outline-content / #files-content） */
   transition: width 0.15s ease, opacity 0.15s ease;
 }
 #outline.hidden {
@@ -139,9 +140,10 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   font-size: 12px;
   font-weight: 600;
   color: var(--status-text);
-  padding: 0 6px 6px 6px;
+  padding: 10px 6px 6px 6px;
   letter-spacing: 0.5px;
   white-space: nowrap;
+  flex-shrink: 0;            /* sticky 替代——作为 flex 第一个子元素固定不滚动 */
 }
 /* 大纲/文件 tab 切换 */
 .outline-tabs {
@@ -172,21 +174,25 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
 }
 #outline-toggle:hover { background: rgba(127,127,127,0.15); color: var(--text); }
 
+/* 大纲 / 文件内容区：各自独立滚动，标题栏固定不动（flex 父容器 #outline） */
+#outline-content { overflow-y: auto; flex: 1; }
+
 /* 文件管理列表 */
 #files-content { padding: 0 8px; overflow-y: auto; flex: 1; }
 #files-content.hidden { display: none; }
 .files-section { margin-bottom: 12px; }
 .files-section-title {
-  font-size: 10px; font-weight: 600; color: var(--status-text);
+  font-size: 12px; font-weight: 700; color: var(--status-text);
   text-transform: uppercase; letter-spacing: 0.5px;
   padding: 4px 6px 2px;
 }
 .files-list {
   display: flex; flex-direction: column;
+  padding-left: 12px;        /* 缩进：区分分组标题与文件项层级 */
 }
 .file-item {
   display: flex; align-items: center; gap: 6px;
-  padding: 3px 6px; font-size: 12px; cursor: pointer;
+  padding: 3px 6px; font-size: 11px; cursor: pointer;
   border-radius: 4px; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -688,7 +694,7 @@ body[data-style-theme="slate"] {
 #favorite-toggle {
   -webkit-app-region: no-drag;
   position: absolute;
-  top: 8px; right: 100px;
+  top: 8px; right: 70px;
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: none; cursor: pointer;
@@ -702,7 +708,13 @@ body[data-style-theme="slate"] {
 #favorite-toggle.favorited svg { fill: #f5a623; }
 
 /* ============ 文件管理：分区折叠 + 搜索 + 数量 ============ */
-.files-search { padding: 8px 8px 4px; }
+.files-search {
+  padding: 8px 8px 4px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-soft);
+}
 #files-search-input {
   width: 100%;
   padding: 6px 10px;
@@ -922,4 +934,259 @@ mark.mp-find-current {
   color: var(--status-text);
   opacity: 0.75;
   margin-right: 16px;
+}
+
+/* ============ 代码模式（xml/json/jsonl/yaml）============ */
+/* 状态栏右侧的语言标签 */
+#status-codelang {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  margin-right: 10px;
+  opacity: 0.85;
+}
+/* 顶部"格式化"按钮（文字按钮，常驻显示）
+   排列（从右到左）：主题(10) → 搜索(40) → 收藏(70) → 源码对比(100) → 格式化(135)
+   md 模式下功能不可用 → 通过 [disabled] 置灰；代码模式下高亮可点。 */
+#format-code-btn {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  top: 4px;
+  right: 135px;
+  /* 关键：必须显式覆盖 #drag-bar button 的 width:22px，否则文字会被挤成竖排 "格/式/化" */
+  width: auto;
+  min-width: 54px;
+  height: 22px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--status-text);
+  cursor: pointer;
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+  transition: background 0.15s, color 0.15s, opacity 0.15s, border-color 0.15s;
+}
+#format-code-btn:hover:not([disabled]) {
+  opacity: 1;
+  background: rgba(127, 127, 127, 0.15);
+  color: var(--text);
+  border-color: var(--text);
+}
+/* 置灰：drag-bar 内任何按钮处于 disabled 时统一样式（点击无反应，光标提示） */
+#drag-bar button[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: auto;  /* 保留 pointer 以让 title 在 hover 时显示 */
+}
+#drag-bar button[disabled]:hover {
+  background: transparent;
+  color: var(--status-text);
+}
+/* 代码模式下：左侧大纲对代码没意义，按钮提示一下 */
+body.code-mode #outline-empty {
+  display: block !important;
+}
+body.code-mode #outline-empty::after {
+  content: "（代码/配置文件无大纲）";
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+/* 代码模式专用编辑区：纯 textarea（避免 vditor 在超大代码块上卡死） */
+#editor-wrap { position: relative; }
+/* ── 代码编辑区（textarea + 语法高亮 pre 叠加） ── */
+#code-editor-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+#code-highlight,
+#code-editor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 24px 32px;
+  border: none;
+  font-family: "SF Mono", "Menlo", "Consolas", "PingFang SC", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  -moz-tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  box-sizing: border-box;
+  outline: none;
+}
+/* 高亮层：展示 Prism 着色后的代码，处于下层、不可交互 */
+#code-highlight {
+  z-index: 1;
+  background: var(--bg);
+  color: var(--text);
+  pointer-events: none;
+  user-select: none;
+}
+#code-highlight code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  tab-size: inherit;
+  background: transparent !important;
+}
+/* 输入层：文字透明、仅保留输入光标，叠在高亮层上方 */
+#code-editor {
+  z-index: 2;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+  resize: none;
+  -webkit-text-fill-color: transparent; /* 彻底透明：防止 Safari/Chrome 偶尔回退到系统色 */
+}
+/* 隐藏 textarea 自身的滚动条（滚动由 pre 高亮层统一展示） */
+#code-editor { scrollbar-width: none; }
+#code-editor::-webkit-scrollbar { display: none; }
+/* 选中文本时保留半透明选区背景（底层 pre 的高亮文字透过选区可见） */
+#code-editor::selection {
+  background: rgba(100, 160, 255, 0.35);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+body.dark #code-editor::selection {
+  background: rgba(100, 160, 255, 0.25);
+}
+/* placeholder 也要透明（否则深色主题下 placeholder 显形） */
+#code-editor::placeholder {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+#code-editor:focus::placeholder {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 代码模式下：隐藏 vditor，显示代码编辑区 */
+body.code-mode #vditor { display: none !important; }
+body.code-mode #code-editor-wrap { display: block !important; }
+body.code-mode #source-pane,
+body.code-mode #source-resizer { display: none !important; }
+/* #source-toggle 在代码模式下不再隐藏 —— 由 renderer 设 disabled 置灰，
+   保持 UI 视觉稳定（用户不会因为按钮"消失"而困惑） */
+
+/* ── Prism 语法高亮 Token 颜色（适配 MarkPad 亮 / 暗主题） ── */
+
+/* 注释（XML 注释等） */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #a0a1a7;
+  font-style: italic;
+}
+
+/* 标点（括号、冒号、逗号） */
+.token.punctuation { color: #999; }
+
+/* 属性名 / XML 标签名 / JSON key */
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #b56936;
+}
+
+/* JSON 字符串、属性值 */
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #50a14f;
+}
+
+/* 运算符、关键字 */
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #986801;
+}
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #a626a4;
+}
+.token.function,
+.token.class-name {
+  color: #4078f2;
+}
+.token.regex,
+.token.important,
+.token.variable {
+  color: #e45649;
+}
+
+/* 暗色主题覆盖 */
+body.dark .token.comment,
+body.dark .token.prolog,
+body.dark .token.doctype,
+body.dark .token.cdata {
+  color: #5c6370;
+}
+body.dark .token.punctuation { color: #abb2bf; }
+body.dark .token.property,
+body.dark .token.tag,
+body.dark .token.boolean,
+body.dark .token.number,
+body.dark .token.constant,
+body.dark .token.symbol,
+body.dark .token.deleted {
+  color: #d19a66;
+}
+body.dark .token.selector,
+body.dark .token.attr-name,
+body.dark .token.string,
+body.dark .token.char,
+body.dark .token.builtin,
+body.dark .token.inserted {
+  color: #98c379;
+}
+body.dark .token.operator,
+body.dark .token.entity,
+body.dark .token.url,
+body.dark .language-css .token.string,
+body.dark .style .token.string {
+  color: #e5c07b;
+}
+body.dark .token.atrule,
+body.dark .token.attr-value,
+body.dark .token.keyword {
+  color: #c678dd;
+}
+body.dark .token.function,
+body.dark .token.class-name {
+  color: #61afef;
+}
+body.dark .token.regex,
+body.dark .token.important,
+body.dark .token.variable {
+  color: #e06c75;
 }

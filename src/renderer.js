@@ -26,6 +26,9 @@ function computeDark() {
 }
 
 let currentFilePath = null;
+// 当前是否处于"代码文件模式"（xml/json/jsonl/yaml/yml）。null = markdown 模式
+// 信号源：主进程 onFileOpened 投递；onFileNew 时清空
+let currentCodeMode = null;
 
 const statusFile = document.getElementById('status-file');
 const statusWords = document.getElementById('status-words');
@@ -33,6 +36,8 @@ const statusCursor = document.getElementById('status-cursor');
 const outlineEl = document.getElementById('outline');
 const sourceEl = document.getElementById('source-pane');
 const sourceEditor = document.getElementById('source-editor');
+// 代码模式专用编辑区（textarea），打开 xml/json/jsonl/yaml 时启用
+const codeEditor = document.getElementById('code-editor');
 
 const WELCOME = `# 欢迎使用 MarkPad
 
@@ -129,6 +134,11 @@ function loadContent(value) {
   pendingValue = value || '';
   if (!vditor) initVditor(pendingValue);
 }
+
+// 标记：vditor 实例是否被代码模式隐藏过，离开代码模式时由 applyCodeMode 负责销毁
+// 原因：vditor 在 display:none 期间 IR mutation observer 与 selection 状态可能错乱；
+//       切回 md 时直接重建比重新显示+setValue 更可靠（用户报的"切回 md 空白"bug）
+let vditorNeedsRebuild = false;
 
 function initVditor(value) {
   if (vditor) {
@@ -268,6 +278,18 @@ function renderOutlineTree() {
   const tree = document.getElementById('outline-tree');
   const empty = document.getElementById('outline-empty');
   if (!tree) return;
+  // 代码模式（json/xml/yaml 等非 markdown 文件）下，文档没有"标题"概念，直接清空大纲
+  if (currentCodeMode) {
+    tree.innerHTML = '';
+    if (empty) {
+      empty.style.display = 'block';
+      empty.textContent = '当前文件为代码/配置文件，无章节大纲';
+    }
+    return;
+  } else if (empty) {
+    // 离开代码模式时把提示文字恢复回默认
+    empty.textContent = '暂无标题，先在文档中添加 # / ## 标题';
+  }
   const headings = buildHeadingTree();
   if (!headings.length) {
     tree.innerHTML = '';
@@ -544,6 +566,17 @@ async function refreshFileList() {
   applySectionCollapsed();
 }
 
+// 根据文件名返回对应的文件图标 emoji（侧栏用）
+function fileIconFor(file) {
+  if (file.isDir) return '📁';
+  const ext = (file.name || '').split('.').pop().toLowerCase();
+  if (ext === 'md')  return '📝';
+  if (ext === 'json' || ext === 'jsonl') return '📊';
+  if (ext === 'xml') return '📋';
+  if (ext === 'yml' || ext === 'yaml') return '⚙️';
+  return '📄';
+}
+
 function renderFileSection(containerId, files, isFavSection) {
   const container = document.getElementById(containerId);
   if (!files.length) {
@@ -557,7 +590,7 @@ function renderFileSection(containerId, files, isFavSection) {
     const star = starOn ? '★' : '☆';
     const starTitle = starOn ? '取消收藏' : '加入收藏';
     return `<div class="file-item ${isCur ? 'current' : ''}" data-path="${escapeAttr(f.path)}" title="${escapeAttr(f.path)}">
-      <span class="fi-icon">${f.isDir ? '📁' : '📄'}</span>
+      <span class="fi-icon">${fileIconFor(f)}</span>
       <span class="fi-name">${escapeHtml(f.name)}</span>
       <span class="fi-star ${starOn ? 'favorited' : ''}" data-action="fav" title="${starTitle}">${star}</span>
     </div>`;
@@ -681,10 +714,18 @@ function scheduleAutoSave() {
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(doAutoSave, AUTO_SAVE_DEBOUNCE);
 }
+// 统一获取当前编辑内容：代码模式从 textarea 取，markdown 模式从 vditor 取
+function getEditorContent() {
+  if (currentCodeMode) return codeEditor ? codeEditor.value : '';
+  if (vditor && vditorReady) return vditor.getValue() || '';
+  return '';
+}
+
 async function doAutoSave() {
   autoSaveTimer = null;
-  if (!vditor || !vditorReady) return;
-  const content = vditor.getValue();
+  // 代码模式：直接从 textarea 取；markdown 模式需要 vditor ready
+  if (!currentCodeMode && (!vditor || !vditorReady)) return;
+  const content = getEditorContent();
   if (content === lastSavedContent) return;
   try {
     const res = await window.markpad.autoSave(content);
@@ -710,6 +751,8 @@ function setAutoSaveStatus(text) {
 }
 
 function updateStats() {
+  // 代码模式：由 updateStatsForCode 接管
+  if (currentCodeMode) { updateStatsForCode(); return; }
   if (!vditor) return;
   const text = vditor.getValue() || '';
   const cn = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
@@ -907,28 +950,185 @@ function nextStyleTheme() {
 
 // ============ IPC 事件绑定 ============
 
-window.markpad.onFileOpened(({ path, content }) => {
+window.markpad.onFileOpened(({ path, content, codeMode }) => {
   currentFilePath = path;
-  loadContent(content);
+  applyCodeMode(codeMode || null);
+  if (codeMode) {
+    // 代码模式：内容直送 textarea，不经过 vditor（避免大文件卡死）
+    loadCodeContent(content);
+  } else {
+    loadContent(content);
+  }
   statusFile.textContent = path.split('/').pop();
   markDirty(false);
   addRecentFile(path);
   updateFavoriteBtn();
   // 文件列表无论 tab 在哪都刷一下（用户切回 tab 时也是新的）
   setTimeout(refreshFileList, 100);
-  // 大纲也刷新（基于新内容）
+  // 大纲也刷新（基于新内容；代码模式下 applyCodeMode 已隐藏大纲，refresh 也无害）
   scheduleOutlineRefresh();
 });
 
 window.markpad.onFileNew(() => {
   currentFilePath = null;
+  applyCodeMode(null);
   loadContent('');
   statusFile.textContent = '未命名';
   markDirty(false);
 });
 
+// 进入/退出"代码模式"：切换 body 类名 + 状态栏标签 + 工具栏可见性
+// 代码模式下：用 textarea 编辑（避免 vditor 在超大代码块上卡死），显示"格式化"按钮 + 语言徽标
+function applyCodeMode(mode) {
+  const wasCodeMode = !!currentCodeMode;
+  currentCodeMode = mode;
+  const isCode = !!mode;
+  document.body.classList.toggle('code-mode', isCode);
+  if (isCode) document.body.setAttribute('data-code-lang', mode.lang);
+  else document.body.removeAttribute('data-code-lang');
+  // 状态栏右下角加一个语言标签
+  const tag = document.getElementById('status-codelang');
+  if (tag) {
+    tag.textContent = isCode ? mode.lang.toUpperCase() : '';
+    tag.style.display = isCode ? '' : 'none';
+  }
+  // 工具栏按钮可用性：所有按钮常驻显示，按文件类型置灰禁用
+  //   - 格式化：仅代码模式可用（md 没有"美化"需求）
+  //   - 源码对比：仅 md 模式可用（代码模式本身就是纯文本）
+  const fmtBtn = document.getElementById('format-code-btn');
+  if (fmtBtn) {
+    fmtBtn.disabled = !isCode;
+    fmtBtn.title = isCode ? '格式化代码（⌥⌘L）' : '格式化（仅 JSON/XML/YAML 等代码文件可用）';
+  }
+  const srcBtn = document.getElementById('source-toggle');
+  if (srcBtn) {
+    srcBtn.disabled = isCode;
+    srcBtn.title = isCode ? '切换源码面板（仅 Markdown 文件可用）' : '切换源码面板（⌘E）';
+  }
+  // 代码编辑区（overlay wrapper）显示控制
+  const codeWrap = document.getElementById('code-editor-wrap');
+  if (codeWrap) {
+    codeWrap.style.display = isCode ? '' : 'none';
+    if (!isCode && codeEditor) codeEditor.value = '';
+  }
+  // 进入代码模式：标记 vditor 需要重建
+  if (isCode) vditorNeedsRebuild = true;
+  // 退出代码模式：强制 dvitor 重新显示 + 销毁旧实例，让接下来的 loadContent 重建
+  // 这比"setValue 回显"更可靠——避免了 display:none 期间的 IR 状��错乱
+  if (wasCodeMode && !isCode && vditorNeedsRebuild) {
+    const vditorEl = document.getElementById('vditor');
+    // 关键：强制让 vditor 容器重新布局——CSS 类刚被移除但浏览器不一定立即回流。
+    // 显式触发布局确保 vditor 初始化时容器不是 display:none。
+    vditorEl.style.display = '';   // 移除任何内联 display 覆盖
+    vditorEl.offsetHeight;         // 强制同步回流（reflow）
+    // 销毁旧 vditor 实例 — 它在隐藏期间的状态已不可靠
+    if (vditor) {
+      try { vditor.destroy(); } catch (_) {}
+      vditor = null;
+      vditorReady = false;
+    }
+    vditorEl.innerHTML = '';
+    vditorNeedsRebuild = false;
+  }
+  // 大纲立即跟随当前模式刷新：代码模式 → 清空 + 提示语；md 模式 → 等 vditor rebuild 后由 loadContent 触发刷新
+  try { renderOutlineTree(); } catch (_) {}
+}
+
+// 把原始代码文本灌进 textarea，不触发 vditor
+function loadCodeContent(value) {
+  if (!codeEditor) return;
+  codeEditor.value = value == null ? '' : String(value);
+  // 滚到顶
+  codeEditor.scrollTop = 0;
+  codeEditor.selectionStart = codeEditor.selectionEnd = 0;
+  markDirty(false);
+  updateStatsForCode();
+  highlightCode();
+}
+
+// ── Prism 语法高亮（仅代码模式） ──
+// 避免 Prism 自动扫描 DOM（我们手动调用 highlightCode）
+if (typeof Prism !== 'undefined') Prism.manual = true;
+
+// 语言映射：codeMod.lang → Prism 语言名
+const PRISM_LANG_MAP = { json: 'json', jsonl: 'json', xml: 'markup', yaml: 'yaml', yml: 'yaml' };
+
+function highlightCode() {
+  if (!currentCodeMode || !codeEditor) return;
+  const highlight = document.getElementById('code-highlight');
+  const codeEl = highlight && highlight.querySelector('code');
+  if (!codeEl) return;
+  const lang = PRISM_LANG_MAP[currentCodeMode.lang] || 'json';
+  const raw = codeEditor.value;
+  try {
+    const html = Prism.highlight(raw, Prism.languages[lang], lang);
+    codeEl.className = 'language-' + lang;
+    codeEl.innerHTML = html;
+  } catch (_) {
+    // tokenizer 出错时直接回退到纯文本（比如超大文件或异常字符）
+    codeEl.className = '';
+    codeEl.textContent = raw;
+  }
+  // 滚动位置同步（用户在高亮层上看的内容要和输入层对齐）
+  highlight.scrollTop = codeEditor.scrollTop;
+  highlight.scrollLeft = codeEditor.scrollLeft;
+}
+
+// codeEditor 滚动事件：同步 pre 高亮层滚动
+if (codeEditor) {
+  codeEditor.addEventListener('scroll', () => {
+    if (!currentCodeMode) return;
+    const highlight = document.getElementById('code-highlight');
+    if (highlight) {
+      highlight.scrollTop = codeEditor.scrollTop;
+      highlight.scrollLeft = codeEditor.scrollLeft;
+    }
+  });
+}
+
+// 代码模式的字数/光标统计
+function updateStatsForCode() {
+  if (!codeEditor) return;
+  const v = codeEditor.value || '';
+  if (statusWords) statusWords.textContent = `${v.length} 字符`;
+  if (statusCursor) {
+    const upto = v.slice(0, codeEditor.selectionStart);
+    const line = upto.split('\n').length;
+    const col = upto.length - upto.lastIndexOf('\n');
+    statusCursor.textContent = `行 ${line}, 列 ${col}`;
+  }
+}
+
+// textarea 编辑事件：脏标 + 统计 + 高亮 + 自动保存触发
+if (codeEditor) {
+  codeEditor.addEventListener('input', () => {
+    if (!currentCodeMode) return;
+    markDirty(true);
+    updateStatsForCode();
+    highlightCode();
+    scheduleAutoSave();
+  });
+  codeEditor.addEventListener('keyup', () => {
+    if (currentCodeMode) updateStatsForCode();
+  });
+  codeEditor.addEventListener('click', () => {
+    if (currentCodeMode) updateStatsForCode();
+  });
+  // Tab 键插入两个空格而不是切焦点
+  codeEditor.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      const s = codeEditor.selectionStart, en = codeEditor.selectionEnd;
+      const v = codeEditor.value;
+      codeEditor.value = v.slice(0, s) + '  ' + v.slice(en);
+      codeEditor.selectionStart = codeEditor.selectionEnd = s + 2;
+      markDirty(true);
+    }
+  });
+}
+
 window.markpad.onRequestSave(async ({ saveAs }) => {
-  const content = vditor ? vditor.getValue() : '';
+  const content = getEditorContent();
   const res = await window.markpad.saveContent(content, saveAs);
   if (res.saved) {
     markDirty(false);
@@ -1077,7 +1277,7 @@ window.markpad.onConfirmClose(async () => {
     window.markpad.confirmCloseReply({ action: 'discard' });
     return;
   }
-  const content = vditor ? vditor.getValue() : '';
+  const content = getEditorContent();
   const res = await window.markpad.saveContent(content, false);
   if (res.saved) {
     markDirty(false);
@@ -1091,10 +1291,18 @@ window.markpad.onConfirmClose(async () => {
 // ========= 文件管理：最近文件 + 收藏夹 + 快速打开（⌘P） =========
 const RECENT_KEY = 'markpad-recent-files';
 const FAV_KEY = 'markpad-favorites';
-const MAX_RECENT = 20;
+const MAX_RECENT = 10;
 
 function getRecentFiles() {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (_) { return []; }
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    // 老版本最多存 20 条，本版本降到 10 条 —— 读取时主动截断并回写，避免侧栏一打开就出 20 条
+    if (Array.isArray(list) && list.length > MAX_RECENT) {
+      list.length = MAX_RECENT;
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (_) {}
+    }
+    return Array.isArray(list) ? list : [];
+  } catch (_) { return []; }
 }
 function saveRecentFiles(list) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(list));
@@ -1334,6 +1542,55 @@ window.addEventListener('keydown', (e) => {
   }
 }, true);
 
+// ========= 代码模式：格式化（⌥⌘L） =========
+async function formatCurrentCode() {
+  if (!currentCodeMode || !codeEditor) {
+    showQuickToast('当前文件不支持格式化');
+    return;
+  }
+  const content = codeEditor.value || '';
+  try {
+    const r = await window.markpad.formatCode(content);
+    if (!r || !r.ok) {
+      showQuickToast('❌ ' + (r && r.error || '格式化失败'));
+      return;
+    }
+    if (!r.changed) {
+      showQuickToast('✓ 已是规范格式');
+      return;
+    }
+    // 替换 textarea 内容，光标回到开头
+    codeEditor.value = r.content;
+    codeEditor.scrollTop = 0;
+    codeEditor.selectionStart = codeEditor.selectionEnd = 0;
+    markDirty(true);
+    updateStatsForCode();
+    highlightCode();
+    scheduleAutoSave();
+    showQuickToast('✅ 已格式化');
+  } catch (err) {
+    showQuickToast('❌ 格式化失败：' + (err.message || err));
+  }
+}
+
+// 顶部"格式化"按钮（仅代码模式可见）
+const formatBtn = document.getElementById('format-code-btn');
+if (formatBtn) {
+  formatBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    formatCurrentCode();
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  // ⌥⌘L / Alt+Ctrl+L：格式化
+  if ((e.metaKey || e.ctrlKey) && e.altKey && (e.key === 'l' || e.key === 'L')) {
+    e.preventDefault();
+    e.stopPropagation();
+    formatCurrentCode();
+  }
+}, true);
+
 // 右上角源码切换按钮
 const sourceToggleBtn = document.getElementById('source-toggle');
 if (sourceToggleBtn) {
@@ -1385,7 +1642,7 @@ window.addEventListener('drop', (e) => {
   e.preventDefault();
   e.stopPropagation();
   document.body.classList.remove('drag-over');
-  const f = files.find((x) => /\.(md|markdown|mdown|mkd|mdtext|txt)$/i.test(x.name)) || files[0];
+  const f = files.find((x) => /\.(md|markdown|mdown|mkd|mdtext|txt|xml|json|jsonl|ya?ml)$/i.test(x.name)) || files[0];
   if (!f) return;
   const p = window.markpad.openDroppedFileFromFile(f);
   if (!p && f.path) window.markpad.openDroppedFile(f.path);

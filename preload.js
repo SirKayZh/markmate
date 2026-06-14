@@ -95,4 +95,6 @@ contextBridge.exposeInMainWorld('markpad', {
   getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
   // 列出目录内容
   listDirectory: (dirPath) => ipcRenderer.invoke('list-directory', dirPath),
+  // 代码文件格式化：渲染层把当前 vditor 内容（含围栏）传过来，主进程返回格式化后的围栏内容
+  formatCode: (content) => ipcRenderer.invoke('format-code', { content }),
 });

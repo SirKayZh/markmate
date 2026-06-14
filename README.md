@@ -28,7 +28,7 @@
 ### 🧭 Navigation & File Management
 
 - **Outline tree** (⌘\) — multi-level collapsible sidebar with persistent fold state; click any heading to jump with visual feedback (toast + flash highlight)
-- **File manager panel** — three zones in one sidebar: ⭐ Favorites · 🕐 Recent (up to 20) · 📂 Current Folder; collapsible sections with keyword search
+- **File manager panel** — three zones in one sidebar: ⭐ Favorites · 🕐 Recent (up to 10) · 📂 Current Folder; collapsible sections with keyword search
 - **Quick Open** (⌘P) — fuzzy-search across favorites & recent files; keyboard-navigable results
 - **Favorites** (⌘D) — star frequently-used files for instant access; one-click toggle
 - **Document search** (⌘F) — find in document with real-time highlighting, prev/next navigation, match counter
@@ -54,6 +54,15 @@
 - **Extended Markdown** — `==highlight==` · `[^1]` footnotes · `[toc]` directory · CJK auto-spacing · term auto-correction
 - **Code line numbers** — syntax-highlighted code blocks show line numbers on the left
 
+### 💻 Lightweight Code & Config Viewer (v1.5.0+)
+
+- **JSON / XML / YAML / JSONL** — open these files directly in MarkPad as a lightweight viewer/editor
+- **Syntax highlighting** — Prism.js-powered highlighting with dual light/dark theme color schemes
+- **One-click format** — ⌥⌘L to beautify JSON/JSONL/XML; dedicated toolbar button with disabled gray-out hints
+- **File type icons** — sidebar shows distinct emoji badges per format (📝 .md · 📊 .json · 📋 .xml · ⚙️ .yml/.yaml)
+- **Outline auto-clears** — when viewing code/config files, the outline panel shows a context-aware message
+- **No overhead** — code files stay as plain `.json` / `.xml` / `.yaml` on disk; no extra markers or metadata
+
 ### 📤 Multi-format Export (v1.4.0+)
 
 - **PDF** (⌘⇧P) — page-break friendly, zero extra dependencies (uses Electron's built-in `printToPDF`)
@@ -65,7 +74,7 @@
 ### 🍎 macOS Integration (also runs on Windows)
 
 - **Drag & drop to open** — drag `.md` files onto the window, Dock icon, or even onto a closed app
-- **File association** — registered handler for `.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt`; set MarkPad as your default editor in Finder
+- **File association** — registered handler for `.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt` `.xml` `.json` `.jsonl` `.yml` `.yaml`; set MarkPad as your default editor in Finder
 - **Native feel** — inset traffic lights, document-dirty dot, recent files menu, word count in status bar
 - **Privacy-aware** — won't trigger macOS "access Desktop/Downloads" permission dialogs on first use
 
@@ -76,12 +85,12 @@
 Download the latest release from the [Releases](https://github.com/SirKayZh/markpad/releases) page:
 
 **macOS:**
-- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.4.1-arm64.dmg`
-- Intel: `MarkPad-1.4.1-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.5.0-arm64.dmg`
+- Intel: `MarkPad-1.5.0-x64.dmg`
 
 **Windows:**
-- `MarkPad-1.4.1-x64-setup.exe` — NSIS installer (recommended)
-- `MarkPad-1.4.1-x64-portable.exe` — standalone, no install needed
+- `MarkPad-1.5.0-x64-setup.exe` — NSIS installer (recommended)
+- `MarkPad-1.5.0-x64-portable.exe` — standalone, no install needed
 
 > The app is **not code-signed / notarized** on either platform.
 >
@@ -160,6 +169,7 @@ Issues and PRs are welcome! Ideas for the roadmap:
 - [ ] Custom CSS themes
 - [x] PDF / HTML / Word / Long image export (v1.4.0)
 - [x] Windows support (v1.4.1)
+- [x] Code / config file viewer with syntax highlighting (v1.5.0)
 - [ ] Vim key bindings
 
 ---

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MarkPad</title>
   <link rel="stylesheet" href="../node_modules/vditor/dist/index.css">
+  <link rel="stylesheet" href="../node_modules/prismjs/themes/prism.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -27,6 +28,8 @@
         <rect x="13" y="4" width="8" height="16" rx="1.5"/>
       </svg>
     </button>
+    <!-- 格式化按钮（常驻显示；非代码模式由 renderer 加 disabled 置灰） -->
+    <button id="format-code-btn" type="button" title="格式化（仅 JSON/XML/YAML 等代码文件可用）" aria-label="格式化代码" disabled>格式化</button>
     <button id="theme-toggle" type="button" title="切换主题（⌘/）" aria-label="切换主题">
       <!-- 单一图标：一个一半亮一半暗的圆，点击循环 亮 → 暗 → 跟随系统 -->
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -86,6 +89,13 @@
     <!-- 编辑器（中间：WYSIWYG 渲染区） -->
     <main id="editor-wrap">
       <div id="vditor"></div>
+      <!-- 代码模式专用编辑区：pre（高亮层）+ textarea（输入层）叠加
+           pre 负责展示 Prism 语法高亮，textarea 透明盖在上方接收输入 -->
+      <div id="code-editor-wrap" style="display:none">
+        <pre id="code-highlight" aria-hidden="true"><code></code></pre>
+        <textarea id="code-editor" spellcheck="false" autocomplete="off"
+                  wrap="off" placeholder="代码 / 配置文件…"></textarea>
+      </div>
     </main>
 
     <!-- 编辑器 ↔ 源码 拖拽分隔条 -->
@@ -105,12 +115,18 @@
   <footer id="statusbar">
     <span id="status-file">未命名</span>
     <span class="spacer"></span>
+    <span id="status-codelang" style="display:none"></span>
     <span id="status-autosave"></span>
     <span id="status-words">0 字</span>
     <span id="status-cursor">行 1, 列 1</span>
   </footer>
 
   <script src="../node_modules/vditor/dist/index.min.js"></script>
+  <!-- 语法高亮：Prism（仅 json / xml / yaml 代码编辑模式使用） -->
+  <script src="../node_modules/prismjs/prism.js"></script>
+  <script src="../node_modules/prismjs/components/prism-json.min.js"></script>
+  <script src="../node_modules/prismjs/components/prism-yaml.min.js"></script>
+  <script src="../node_modules/prismjs/components/prism-markup.min.js"></script>
   <!-- 导出依赖：Word（长图改为主进程 capturePage，无需 html2canvas） -->
   <script src="../node_modules/html-docx-js/dist/html-docx.js"></script>
   <!-- 必须在 renderer.js 之前 -->
