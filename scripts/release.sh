@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# release.sh — 一键发版：bump 版本 → 打包 DMG → git 提交并打 tag
+# release.sh — 一键发版：bump 版本 → 打包 macOS DMG + Windows exe → git 提交并打 tag
 #
 # 用法：
 #   bash scripts/release.sh patch   # bug 修复  1.0.1 -> 1.0.2
@@ -8,7 +8,7 @@
 #   bash scripts/release.sh major   # 破坏改动  1.0.1 -> 2.0.0
 #
 # 发版前请先把本次改动写进 CHANGELOG.md 的“未发布”区，脚本会用它生成 tag 说明。
-# 流程结束后会得到带新版本号的 DMG，并创建对应的 git tag（v<version>）。
+# 流程结束后会得到带新版本号的 DMG + exe，并创建对应的 git tag（v<version>）。
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -66,4 +66,7 @@ fi
 
 echo ""
 echo "==> 发版完成 🎉  v$NEW"
-echo "    DMG 在 release/ 目录；推送：git push && git push --tags"
+echo "    产物在 release/ 目录；macOS DMG + Windows exe 均已生成"
+echo "    推送：git push && git push --tags"
+echo "    GitHub Release：gh release create v$NEW release/*-$NEW-* \\"
+echo "      --title \"MarkPad v$NEW\" --notes-file <notes>"
