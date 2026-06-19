@@ -9,6 +9,19 @@
 
 ---
 
+## [1.6.1] - 2026-06-19
+
+### 优化 Performance
+- **异步文件读取**：`openFileInWindow` 改用 `fs.promises.readFile`，打开大文件不再冻结主进程。
+- **输入回调瘦身**：vditor input 回调中字数统计与源码面板同步改为 300ms debounce；源码面板隐藏时彻底跳过序列化，消除 IR 模式打字掉帧。
+- **Prism 高亮 debounce**：代码编辑器 input 高亮改为 150ms debounce，大 JSON/XML 文件每键不再全文重算。
+- 内部同步路径统一使用 `getEditorContent()`，降低重复序列化。
+
+### 修复 Fixed
+- 代码模式下 Tab 键缩进后未触发自动保存与高亮刷新。
+
+---
+
 ## [1.6.0] - 2026-06-19
 
 ### 新增 Added
