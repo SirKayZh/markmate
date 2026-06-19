@@ -83,12 +83,12 @@
 从 [Releases](https://github.com/SirKayZh/markpad/releases) 页面下载最新版本：
 
 **macOS：**
-- Apple 芯片（M1/M2/M3/M4…）：`MarkPad-1.5.0-arm64.dmg`
-- Intel：`MarkPad-1.5.0-x64.dmg`
+- Apple 芯片（M1/M2/M3/M4…）：`MarkPad-1.6.0-arm64.dmg`
+- Intel：`MarkPad-1.6.0-x64.dmg`
 
 **Windows：**
-- `MarkPad-1.5.0-x64-setup.exe` — 安装版（推荐）
-- `MarkPad-1.5.0-x64-portable.exe` — 便携版，解压即用
+- `MarkPad-1.6.0-x64-setup.exe` — 安装版（推荐）
+- `MarkPad-1.6.0-x64-portable.exe` — 便携版，解压即用
 
 > 两个平台的应用均**未经过代码签名/公证**。
 >

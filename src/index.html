@@ -22,21 +22,24 @@
       </svg>
     </button>
     <button id="source-toggle" type="button" title="切换源码面板（⌘E）" aria-label="切换源码面板">
-      <!-- 两个竖条图标：表示双栏 -->
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="4" width="8" height="16" rx="1.5"/>
         <rect x="13" y="4" width="8" height="16" rx="1.5"/>
       </svg>
     </button>
-    <!-- 格式化按钮（常驻显示；非代码模式由 renderer 加 disabled 置灰） -->
     <button id="format-code-btn" type="button" title="格式化（仅 JSON/XML/YAML 等代码文件可用）" aria-label="格式化代码" disabled>格式化</button>
     <button id="theme-toggle" type="button" title="切换主题（⌘/）" aria-label="切换主题">
-      <!-- 单一图标：一个一半亮一半暗的圆，点击循环 亮 → 暗 → 跟随系统 -->
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="9"/>
         <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/>
       </svg>
     </button>
+  </div>
+
+  <!-- Tab 栏 -->
+  <div id="tab-bar">
+    <div id="tab-bar-content"></div>
+    <button id="tab-new-btn" type="button" title="新建标签页（⌘T）" aria-label="新建标签页">+</button>
   </div>
 
   <div id="app">
@@ -51,14 +54,11 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
       </div>
-      <!-- 大纲内容（自绘树，支持多级折叠+缩进） -->
       <div id="outline-content" class="hidden">
         <div id="outline-tree" class="outline-tree"></div>
         <div id="outline-empty" class="outline-empty">暂无标题，先在文档中添加 # / ## 标题</div>
       </div>
-      <!-- 文件管理内容 -->
       <div id="files-content">
-        <!-- 文件管理内的搜索框 -->
         <div class="files-search">
           <input id="files-search-input" type="search" placeholder="🔍 搜索文件名…" spellcheck="false" autocomplete="off">
         </div>
@@ -83,14 +83,10 @@
       </div>
     </aside>
 
-    <!-- 大纲 ↔ 编辑器 拖拽分隔条 -->
     <div id="outline-resizer" class="resizer"></div>
 
-    <!-- 编辑器（中间：WYSIWYG 渲染区） -->
     <main id="editor-wrap">
       <div id="vditor"></div>
-      <!-- 代码模式专用编辑区：pre（高亮层）+ textarea（输入层）叠加
-           pre 负责展示 Prism 语法高亮，textarea 透明盖在上方接收输入 -->
       <div id="code-editor-wrap" style="display:none">
         <pre id="code-highlight" aria-hidden="true"><code></code></pre>
         <textarea id="code-editor" spellcheck="false" autocomplete="off"
@@ -98,10 +94,8 @@
       </div>
     </main>
 
-    <!-- 编辑器 ↔ 源码 拖拽分隔条 -->
     <div id="source-resizer" class="resizer hidden"></div>
 
-    <!-- 右侧源码面板（可收起） -->
     <aside id="source-pane" class="hidden">
       <div class="source-title">
         <span>Markdown 源码</span>
@@ -111,7 +105,6 @@
     </aside>
   </div>
 
-  <!-- 底部状态栏 -->
   <footer id="statusbar">
     <span id="status-file">未命名</span>
     <span class="spacer"></span>
@@ -122,22 +115,44 @@
   </footer>
 
   <script src="../node_modules/vditor/dist/index.min.js"></script>
-  <!-- 语法高亮：Prism（仅 json / xml / yaml 代码编辑模式使用） -->
   <script src="../node_modules/prismjs/prism.js"></script>
   <script src="../node_modules/prismjs/components/prism-json.min.js"></script>
   <script src="../node_modules/prismjs/components/prism-yaml.min.js"></script>
   <script src="../node_modules/prismjs/components/prism-markup.min.js"></script>
-  <!-- 导出依赖：Word（长图改为主进程 capturePage，无需 html2canvas） -->
   <script src="../node_modules/html-docx-js/dist/html-docx.js"></script>
-  <!-- 必须在 renderer.js 之前 -->
-  <!-- 快速打开模态框（⌘P） -->
+
+  <!-- Tab 右键菜单 -->
+  <div id="tab-context-menu" class="hidden">
+    <button data-action="close">关闭标签页</button>
+    <button data-action="close-others">关闭其他标签页</button>
+    <button data-action="close-right">关闭右侧标签页</button>
+    <button data-action="detach">移到新窗口</button>
+    <button data-action="reveal" id="tab-ctx-reveal">在 Finder 中显示</button>
+  </div>
+
   <div id="quick-open-overlay" class="hidden">
     <div id="quick-open-panel">
       <input id="quick-open-input" type="text" placeholder="搜索文件名打开…" spellcheck="false" autocomplete="off">
       <div id="quick-open-results"></div>
     </div>
   </div>
-  <!-- 文档内搜索浮层（⌘F） -->
+  <div id="link-dialog-overlay" class="hidden">
+    <div id="link-dialog-panel">
+      <div class="link-dialog-title">插入链接</div>
+      <label class="link-dialog-field">
+        <span>链接文字</span>
+        <input id="link-dialog-text" type="text" placeholder="显示的文字（留空则用 URL）" spellcheck="false" autocomplete="off">
+      </label>
+      <label class="link-dialog-field">
+        <span>链接地址</span>
+        <input id="link-dialog-url" type="text" placeholder="https://…" spellcheck="false" autocomplete="off">
+      </label>
+      <div class="link-dialog-actions">
+        <button id="link-dialog-cancel" type="button">取消</button>
+        <button id="link-dialog-ok" type="button" class="primary">插入</button>
+      </div>
+    </div>
+  </div>
   <div id="find-bar" class="hidden">
     <input id="find-input" type="text" placeholder="在文档中搜索…" spellcheck="false" autocomplete="off">
     <span id="find-count">0/0</span>
@@ -145,7 +160,6 @@
     <button id="find-next" type="button" title="下一个（Enter）" aria-label="下一个">↓</button>
     <button id="find-close" type="button" title="关闭（Esc）" aria-label="关闭">×</button>
   </div>
-  <!-- 历史版本面板 -->
   <div id="versions-overlay" class="hidden">
     <div id="versions-panel">
       <div class="versions-head">
@@ -165,7 +179,6 @@
       </div>
     </div>
   </div>
-  <!-- 草稿恢复提示 -->
   <div id="draft-banner" class="hidden">
     <span>检测到上次未保存的草稿</span>
     <button id="draft-restore" type="button">恢复</button>

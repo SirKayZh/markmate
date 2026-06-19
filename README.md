@@ -85,12 +85,12 @@
 Download the latest release from the [Releases](https://github.com/SirKayZh/markpad/releases) page:
 
 **macOS:**
-- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.5.0-arm64.dmg`
-- Intel: `MarkPad-1.5.0-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.6.0-arm64.dmg`
+- Intel: `MarkPad-1.6.0-x64.dmg`
 
 **Windows:**
-- `MarkPad-1.5.0-x64-setup.exe` — NSIS installer (recommended)
-- `MarkPad-1.5.0-x64-portable.exe` — standalone, no install needed
+- `MarkPad-1.6.0-x64-setup.exe` — NSIS installer (recommended)
+- `MarkPad-1.6.0-x64-portable.exe` — standalone, no install needed
 
 > The app is **not code-signed / notarized** on either platform.
 >

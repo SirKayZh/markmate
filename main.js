@@ -1,31 +1,38 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-let mainWindow = null;
-// 记录每个窗口当前打开的文件路径
-let currentFilePath = null;
-// 当前代码文件模式：null = markdown 文件；否则 { lang } 表示当前打开的是 xml/json/jsonl/yaml/yml
-// —— 这层信息让 save/auto-save 知道要把"围栏代码块"反向剥成原始文本写回，而不是 .md 全文写回
-let currentCodeMode = null;
-// 当前是否脏（渲染层告知，主进程缓存一份供关闭确认使用）
-let currentDirty = false;
-// 冷启动时（窗口/渲染进程尚未就绪）通过 open-file / 命令行传入的待打开文件
-let pendingOpenPath = null;
-// 渲染进程是否已准备好接收 file-opened
-let rendererReady = false;
-// 关闭流程状态：是否已经被用户/渲染层确认可放行
-let allowClose = false;
-// 是否正在等待渲染层回复
-let closingInProgress = false;
+// ============ 多窗口状态管理 ============
+// 每个窗口维护独立的文件上下文
+const windowContexts = new Map(); // winId -> { currentFilePath, currentCodeMode, currentDirty, rendererReady, allowClose, closingInProgress }
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
+function getContext(winId) { return windowContexts.get(winId); }
+function setContext(winId, ctx) { windowContexts.set(winId, ctx); }
+function deleteContext(winId) { windowContexts.delete(winId); }
+
+function createDefaultContext() {
+  return {
+    currentFilePath: null,
+    currentCodeMode: null,
+    currentDirty: false,
+    rendererReady: false,
+    allowClose: false,
+    closingInProgress: false,
+  };
+}
+
+function getWin(id) { return BrowserWindow.getAllWindows().find(w => w.id === id); }
+
+// ============ 创建窗口 ============
+let pendingOpenPath = null;
+
+function createWindow(initialTab) {
+  const win = new BrowserWindow({
     width: 1100,
     height: 760,
     minWidth: 600,
     minHeight: 400,
-    titleBarStyle: 'hiddenInset', // macOS 风格：红绿灯按钮内嵌
+    titleBarStyle: 'hiddenInset',
     backgroundColor: '#ffffff',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -34,52 +41,46 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+  const ctx = createDefaultContext();
+  // 如果新窗口要加载初始 tab
+  if (initialTab) {
+    ctx._initialTab = initialTab;
+  }
+  setContext(win.id, ctx);
+
+  win.loadFile(path.join(__dirname, 'src', 'index.html'));
 
   if (process.env.MARKPAD_DEBUG === '1') {
-    mainWindow.webContents.openDevTools({ mode: 'right' });
+    win.webContents.openDevTools({ mode: 'right' });
   }
 
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    rendererReady = false;
-    allowClose = false;
-    closingInProgress = false;
+  win.on('closed', () => {
+    deleteContext(win.id);
   });
 
-  // 拦截关闭：未保存时让渲染层走一遍确认流程
-  mainWindow.on('close', (e) => {
-    if (allowClose) return;          // 已经确认过，放行
-    if (!currentDirty) return;       // 没有未保存改动，放行
-    if (closingInProgress) {         // 正在等回复，避免重复弹
-      e.preventDefault();
-      return;
-    }
+  win.on('close', (e) => {
+    const ctx = getContext(win.id);
+    if (!ctx) return;
+    if (ctx.allowClose) return;
+    if (!ctx.currentDirty) return;
+    if (ctx.closingInProgress) { e.preventDefault(); return; }
     e.preventDefault();
-    closingInProgress = true;
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('confirm-close');
+    ctx.closingInProgress = true;
+    if (win.webContents) {
+      win.webContents.send('confirm-close');
     } else {
-      // 渲染层不可用，安全起见放行
-      allowClose = true;
-      closingInProgress = false;
-      mainWindow && mainWindow.close();
+      ctx.allowClose = true;
+      ctx.closingInProgress = false;
+      win.close();
     }
   });
+
+  return win;
 }
 
-// ============ 代码文件支持（xml/json/jsonl/yaml/yml）============
-// 设计理念：代码模式在渲染层用纯 textarea 编辑，不经过 vditor。
-//   理由：vditor IR 模式不擅长扛 150KB+ 的单个超大代码块（如 package-lock.json）
-//        会反复触发增量解析、DOM 暴涨到几 MB，最终页面卡死。
-//   主进程职责：识别扩展名 → 把原文交给渲染层；保存时直接写盘；格式化按语言调专门函数
+// ============ 代码文件支持 ============
 const CODE_LANG_BY_EXT = {
-  '.xml':   'xml',
-  '.json':  'json',
-  '.jsonl': 'jsonl',
-  '.yml':   'yaml',
-  '.yaml':  'yaml',
+  '.xml': 'xml', '.json': 'json', '.jsonl': 'jsonl', '.yml': 'yaml', '.yaml': 'yaml',
 };
 const CODE_EXT_LIST = Object.keys(CODE_LANG_BY_EXT).map(e => e.slice(1));
 function detectCodeLang(fp) {
@@ -87,7 +88,7 @@ function detectCodeLang(fp) {
   const ext = path.extname(fp).toLowerCase();
   return CODE_LANG_BY_EXT[ext] || null;
 }
-// 简易格式化（不引入新依赖；够日常配置文件用）
+
 function formatCodeText(raw, codeLang) {
   const src = raw == null ? '' : String(raw);
   try {
@@ -97,7 +98,6 @@ function formatCodeText(raw, codeLang) {
       return { ok: true, text: out, changed: out !== src };
     }
     if (codeLang === 'jsonl') {
-      // jsonl 习惯每行单独一个紧凑 JSON 对象，逐行规整
       const lines = src.split(/\r?\n/);
       const out = lines.map(line => {
         const t = line.trim();
@@ -108,8 +108,6 @@ function formatCodeText(raw, codeLang) {
       return { ok: true, text: out, changed: out !== src };
     }
     if (codeLang === 'xml') {
-      // 极简 XML pretty：压扁空白后按 tag 重排缩进
-      // 不解析 CDATA / 实体，仅满足"看得过去"，复杂 XML 用户自行用专业工具
       const flat = src.replace(/>\s+</g, '><').trim();
       if (!flat) return { ok: true, text: '', changed: false };
       let indent = 0;
@@ -127,7 +125,6 @@ function formatCodeText(raw, codeLang) {
       return { ok: true, text: out, changed: out !== src };
     }
     if (codeLang === 'yaml') {
-      // 暂不引入 js-yaml；提示用户 YAML 不做自动格式化
       return { ok: false, text: src, changed: false, error: 'YAML 暂不支持自动格式化（避免引入额外依赖），可手动整理' };
     }
     return { ok: false, text: src, changed: false, error: '不支持该语言的格式化' };
@@ -136,21 +133,27 @@ function formatCodeText(raw, codeLang) {
   }
 }
 
-// ============ 文件操作辅助 ============
-function setTitle(filePath, dirty) {
-  if (!mainWindow) return;
+// ============ 文件操作 ============
+function setTitle(win, filePath, dirty) {
+  if (!win || win.isDestroyed()) return;
   const name = filePath ? path.basename(filePath) : '未命名';
-  mainWindow.setTitle(`${dirty ? '• ' : ''}${name} — MarkPad`);
-  // 代理图标（红绿灯左侧的小文件 icon）：必须传 absolute path 才能显示
-  // 之前传相对路径（比如 "README.md"）会被 macOS 忽略 → 图标空缺
-  // 真实场景：用户从 vditor.openFileByPath('README.md') 这种相对路径过来
+  win.setTitle(`${dirty ? '• ' : ''}${name} — MarkPad`);
   const absPath = filePath && path.isAbsolute(filePath) ? filePath : (filePath ? path.resolve(filePath) : '');
-  mainWindow.setRepresentedFilename(absPath);
-  mainWindow.setDocumentEdited(!!dirty);
+  win.setRepresentedFilename(absPath);
+  win.setDocumentEdited(!!dirty);
+}
+
+// 从 IPC event 中找到对应的窗口上下文
+function ctxFromEvent(event) {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return { ctx: null, win: null };
+  return { ctx: getContext(win.id), win };
 }
 
 async function doOpen() {
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+  const focusedWin = BrowserWindow.getFocusedWindow();
+  if (!focusedWin) return;
+  const { canceled, filePaths } = await dialog.showOpenDialog(focusedWin, {
     properties: ['openFile'],
     filters: [
       { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'txt'] },
@@ -159,98 +162,110 @@ async function doOpen() {
     ]
   });
   if (canceled || !filePaths.length) return;
-  openFile(filePaths[0]);
+  openFileInWindow(focusedWin, filePaths[0]);
 }
 
-// 统一的打开文件入口：菜单打开、拖拽、Dock、命令行都走这里
-function openFile(fp) {
+function openFileInWindow(win, fp) {
   if (!fp) return;
-  // 窗口/渲染进程还没就绪：先记下，待 renderer-ready 后再打开（解决冷启动拖入丢失）
-  if (!mainWindow || !rendererReady) {
+  const ctx = getContext(win.id);
+  if (!ctx || !ctx.rendererReady) {
     pendingOpenPath = fp;
-    if (!mainWindow && app.isReady()) createWindow();
+    if (!win && app.isReady()) createWindow();
     return;
   }
   try {
     const rawContent = fs.readFileSync(fp, 'utf-8');
-    currentFilePath = fp;
-    // 识别是否代码/配置文件 → 进入"代码模式"。代码模式不走 vditor 围栏方案
-    // —— 后者在 150KB+ 大文件上会卡死（vditor IR 增量解析爆炸：305KB 文本 → 846KB DOM）
-    // 直接把原文交给渲染层的 textarea 编辑区，瞬开、滚动顺滑
     const codeLang = detectCodeLang(fp);
-    currentCodeMode = codeLang ? { lang: codeLang } : null;
-    setTitle(fp, false);
-    const content = codeLang
-      ? rawContent                          // 代码模式：原文直送 textarea
-      : expandImagePaths(rawContent, fp);   // markdown 模式：展开相对路径图片为 file://
-    mainWindow.webContents.send('file-opened', {
+    ctx.currentFilePath = fp;
+    ctx.currentCodeMode = codeLang ? { lang: codeLang } : null;
+    setTitle(win, fp, false);
+    const content = codeLang ? rawContent : expandImagePaths(rawContent, fp);
+    win.webContents.send('file-opened', {
       path: fp,
       content,
-      codeMode: currentCodeMode
+      codeMode: ctx.currentCodeMode
     });
     app.addRecentDocument(fp);
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+    if (win.isMinimized()) win.restore();
+    win.focus();
   } catch (err) {
     dialog.showErrorBox('打开失败', String(err));
   }
 }
 
-function writeFile(fp, content) {
-  // 代码文件模式：渲染层的 textarea 内容就是原始文本，直接写盘
-  if (currentCodeMode) {
+// 全局打开文件入口（open-file 事件 / 命令行参数）
+function openFile(fp) {
+  if (!fp) return;
+  // 优先发送到聚焦窗口
+  const focusedWin = BrowserWindow.getFocusedWindow();
+  if (focusedWin) {
+    openFileInWindow(focusedWin, fp);
+  } else if (BrowserWindow.getAllWindows().length > 0) {
+    openFileInWindow(BrowserWindow.getAllWindows()[0], fp);
+  } else {
+    pendingOpenPath = fp;
+    if (app.isReady()) createWindow();
+    // else: whenReady 回调会自动 createWindow() 并消费 pendingOpenPath
+  }
+}
+
+function writeFile(fp, content, ctx) {
+  if (currentCodeModeFromCtx(ctx)) {
     fs.writeFileSync(fp, content == null ? '' : String(content), 'utf-8');
-    currentFilePath = fp;
-    setTitle(fp, false);
+    ctx.currentFilePath = fp;
+    setTitle(getWinByCtx(ctx), fp, false);
     app.addRecentDocument(fp);
     clearDraftIfAny();
     return;
   }
-  // markdown 模式：图片路径归一化（保证 md 可移植）
   const normalized = normalizeImagePaths(content, fp);
   fs.writeFileSync(fp, normalized, 'utf-8');
-  currentFilePath = fp;
-  setTitle(fp, false);
+  ctx.currentFilePath = fp;
+  setTitle(getWinByCtx(ctx), fp, false);
   app.addRecentDocument(fp);
-  // 命名文件保存后，清掉未命名草稿
   clearDraftIfAny();
 }
 
-// 把 markdown 里 file:// 绝对路径形式的图片，转成相对 md 文件的相对路径
-// 用于"未命名 → 另存为"或"图片粘贴时还没保存过"的情况
+function currentCodeModeFromCtx(ctx) { return ctx ? ctx.currentCodeMode : null; }
+function getWinByCtx(ctx) {
+  if (!ctx) return null;
+  for (const [winId, c] of windowContexts) {
+    if (c === ctx) return getWin(winId);
+  }
+  return null;
+}
+
+// ============ 图片路径处理 ============
 function normalizeImagePaths(content, mdPath) {
   if (!content || !mdPath) return content;
   const mdDir = path.dirname(mdPath);
   const convert = (url) => {
-    if (!/^file:\/\//i.test(url)) return null;
+    if (!/^(file|mpmedia):\/\//i.test(url)) return null;
     try {
-      const abs = decodeURI(url.replace(/^file:\/\//i, ''));
+      const abs = decodeURI(url.replace(/^(file|mpmedia):\/\//i, ''));
       if (!path.isAbsolute(abs)) return null;
       const rel = path.relative(mdDir, abs);
       if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
       return './' + rel.split(path.sep).join('/');
     } catch (_) { return null; }
   };
-  // Markdown: ![alt](url "title")
   content = content.replace(/(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g,
     (m, head, url, tail) => { const r = convert(url); return r ? head + r + tail : m; });
-  // HTML: <img ... src="url" ...>
   content = content.replace(/(<img\b[^>]*?\ssrc=["'])([^"']+)(["'][^>]*>)/gi,
     (m, head, url, tail) => { const r = convert(url); return r ? head + r + tail : m; });
   return content;
 }
 
-// 反向：把 md 里的相对路径图片转成 file:// 绝对路径用于编辑器内显示
 function expandImagePaths(content, mdPath) {
   if (!content || !mdPath) return content;
   const mdDir = path.dirname(mdPath);
   const convert = (url) => {
-    if (/^(file:|https?:|data:)/i.test(url)) return null;
+    if (/^(file:|mpmedia:|https?:|data:)/i.test(url)) return null;
     if (url.startsWith('#') || url.startsWith('//')) return null;
     try {
       const abs = path.resolve(mdDir, url);
       if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i.test(abs)) return null;
-      return 'file://' + abs.split(path.sep).join('/');
+      return 'mpmedia://' + encodeURI(abs.split(path.sep).join('/'));
     } catch (_) { return null; }
   };
   content = content.replace(/(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g,
@@ -260,39 +275,34 @@ function expandImagePaths(content, mdPath) {
   return content;
 }
 
+// ============ 保存 ============
 async function doSave() {
-  // 向渲染进程请求当前内容
-  mainWindow.webContents.send('request-save', { saveAs: false });
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) win.webContents.send('request-save', { saveAs: false });
 }
-
 async function doSaveAs() {
-  mainWindow.webContents.send('request-save', { saveAs: true });
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) win.webContents.send('request-save', { saveAs: true });
 }
 
-// 渲染进程把内容回传，主进程真正写盘
 ipcMain.handle('save-content', async (event, { content, saveAs }) => {
-  let fp = currentFilePath;
+  const { ctx, win } = ctxFromEvent(event);
+  if (!ctx || !win) return { saved: false };
+  let fp = ctx.currentFilePath;
   if (saveAs || !fp) {
-    // 代码模式 → 默认扩展名跟当前文件类型一致；markdown 模式 → .md
-    const isCode = !!currentCodeMode;
-    const defaultExt = isCode ? path.extname(currentFilePath || '') || '.txt' : '.md';
+    const isCode = !!ctx.currentCodeMode;
+    const defaultExt = isCode ? path.extname(ctx.currentFilePath || '') || '.txt' : '.md';
     const defaultName = fp ? path.basename(fp) : ('未命名' + defaultExt);
     const filters = isCode
       ? [{ name: '代码/配置文件', extensions: CODE_EXT_LIST }, { name: '所有文件', extensions: ['*'] }]
       : [{ name: 'Markdown', extensions: ['md'] }];
-    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-      defaultPath: defaultName,
-      filters,
-    });
+    const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: defaultName, filters });
     if (canceled || !filePath) return { saved: false };
     fp = filePath;
   }
   try {
-    writeFile(fp, content);
-    // 快照：代码模式存原文；markdown 模式存归一化后的相对路径版本
-    const snapText = currentCodeMode
-      ? String(content || '')
-      : normalizeImagePaths(content, fp);
+    writeFile(fp, content, ctx);
+    const snapText = ctx.currentCodeMode ? String(content || '') : normalizeImagePaths(content, fp);
     snapshotVersion(fp, snapText);
     return { saved: true, path: fp };
   } catch (err) {
@@ -301,20 +311,17 @@ ipcMain.handle('save-content', async (event, { content, saveAs }) => {
   }
 });
 
-// ============ 自动保存与版本历史 ============
-// 命名文件：自动保存到原路径 + 打快照到历史区
-// 未命名文件：把内容存到 drafts/ 目录的临时草稿（崩溃恢复）
+// ============ 自动保存 ============
 ipcMain.handle('auto-save', async (event, { content }) => {
+  const { ctx } = ctxFromEvent(event);
+  if (!ctx) return { saved: false };
   try {
-    if (currentFilePath) {
-      writeFile(currentFilePath, content);
-      const snapText = currentCodeMode
-        ? String(content || '')
-        : normalizeImagePaths(content, currentFilePath);
-      snapshotVersion(currentFilePath, snapText);
-      return { saved: true, autoSaved: true, path: currentFilePath };
+    if (ctx.currentFilePath) {
+      writeFile(ctx.currentFilePath, content, ctx);
+      const snapText = ctx.currentCodeMode ? String(content || '') : normalizeImagePaths(content, ctx.currentFilePath);
+      snapshotVersion(ctx.currentFilePath, snapText);
+      return { saved: true, autoSaved: true, path: ctx.currentFilePath };
     } else {
-      // 未命名草稿（代码模式下通常不会出现：用户必须先打开一个文件才进代码模式）
       saveDraft(content);
       return { saved: false, draft: true };
     }
@@ -324,17 +331,19 @@ ipcMain.handle('auto-save', async (event, { content }) => {
   }
 });
 
-// 代码文件格式化：渲染层传 textarea 原文，主进程返回格式化后的原文
+// ============ 格式化 ============
 ipcMain.handle('format-code', async (event, { content }) => {
-  if (!currentCodeMode) return { ok: false, error: '当前不是代码文件' };
-  const r = formatCodeText(content, currentCodeMode.lang);
+  const { ctx } = ctxFromEvent(event);
+  if (!ctx || !ctx.currentCodeMode) return { ok: false, error: '当前不是代码文件' };
+  const r = formatCodeText(content, ctx.currentCodeMode.lang);
   if (!r.ok) return { ok: false, error: r.error || '格式化失败' };
   return { ok: true, content: r.text, changed: r.changed };
 });
 
-// 版本历史：列出指定文件的快照
+// ============ 版本历史 ============
 ipcMain.handle('list-versions', async (event, { filePath } = {}) => {
-  const fp = filePath || currentFilePath;
+  const { ctx } = ctxFromEvent(event);
+  const fp = filePath || (ctx ? ctx.currentFilePath : null);
   if (!fp) return [];
   try {
     const dir = versionDirFor(fp);
@@ -344,24 +353,21 @@ ipcMain.handle('list-versions', async (event, { filePath } = {}) => {
       .map(n => {
         const full = path.join(dir, n);
         const stat = fs.statSync(full);
-        // 文件名格式：YYYYMMDD-HHmmss.md
         return { name: n, path: full, time: stat.mtimeMs, size: stat.size };
       })
       .sort((a, b) => b.time - a.time);
   } catch (_) { return []; }
 });
 
-// 读取某个快照内容
 ipcMain.handle('read-version', async (event, { versionPath }) => {
+  const { ctx } = ctxFromEvent(event);
   try {
     const raw = fs.readFileSync(versionPath, 'utf-8');
     let content;
-    if (currentCodeMode) {
-      // 代码模式：快照里就是原文，直接交给 textarea
+    if (ctx && ctx.currentCodeMode) {
       content = raw;
-    } else if (currentFilePath) {
-      // markdown 模式：把相对路径图片展成 file:// 让编辑器可见
-      content = expandImagePaths(raw, currentFilePath);
+    } else if (ctx && ctx.currentFilePath) {
+      content = expandImagePaths(raw, ctx.currentFilePath);
     } else {
       content = raw;
     }
@@ -371,14 +377,12 @@ ipcMain.handle('read-version', async (event, { versionPath }) => {
   }
 });
 
-// 启动时检查草稿目录里是否有未命名草稿，有就提示恢复
 ipcMain.handle('check-draft', async () => {
   try {
     const draftDir = getDraftDir();
     if (!fs.existsSync(draftDir)) return { has: false };
     const files = fs.readdirSync(draftDir).filter(n => n.endsWith('.md'));
     if (!files.length) return { has: false };
-    // 取最新的
     const items = files.map(n => {
       const full = path.join(draftDir, n);
       const stat = fs.statSync(full);
@@ -397,17 +401,48 @@ ipcMain.handle('discard-draft', async (event, { draftPath }) => {
   catch (_) { return { ok: false }; }
 });
 
-// ====== 历史/草稿存储辅助 ======
+// ============ 历史/草稿存储 ============
 const MAX_VERSIONS_PER_FILE = 10;
+function appDataDir() { return path.join(app.getPath('userData'), 'history'); }
+function getDraftDir() { return path.join(app.getPath('userData'), 'drafts'); }
 
-function appDataDir() {
-  return path.join(app.getPath('userData'), 'history');
+// ============ 持久化数据（不依赖 localStorage origin） ============
+const APP_DATA_FILE = path.join(app.getPath('userData'), 'markpad-data.json');
+function readAppData() {
+  try {
+    if (fs.existsSync(APP_DATA_FILE)) {
+      return JSON.parse(fs.readFileSync(APP_DATA_FILE, 'utf-8'));
+    }
+  } catch (_) {}
+  return { recentFiles: [], favorites: [] };
 }
-function getDraftDir() {
-  return path.join(app.getPath('userData'), 'drafts');
+function writeAppData(data) {
+  try {
+    fs.writeFileSync(APP_DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (_) {}
+}
+// 首次启动时，如果 JSON 文件不存在但 localStorage 有数据（app:// origin 旧数据），
+// 尝试从 LevelDB 迁移（通过渲染进程在首次检测到空 localStorage 时从 IPC 拉取）
+function mergeAppData(key, items) {
+  const data = readAppData();
+  // 去重合并：以 path 为主键
+  const existing = new Map((data[key] || []).map(f => [f.path, f]));
+  for (const item of items) {
+    if (!existing.has(item.path)) {
+      existing.set(item.path, item);
+    }
+  }
+  data[key] = Array.from(existing.values());
+  writeAppData(data);
+  return data[key];
+}
+function replaceAppData(key, items) {
+  const data = readAppData();
+  data[key] = items;
+  writeAppData(data);
+  return items;
 }
 function hashPath(fp) {
-  // 简单稳定哈希：取 path 的 djb2，保留 8 hex
   let h = 5381;
   for (let i = 0; i < fp.length; i++) h = ((h << 5) + h + fp.charCodeAt(i)) >>> 0;
   return h.toString(16).padStart(8, '0');
@@ -425,18 +460,13 @@ function snapshotVersion(fp, content) {
   try {
     const dir = versionDirFor(fp);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    // 与上一个快照内容相同则跳过
     const existing = fs.readdirSync(dir).filter(n => n.endsWith('.md')).sort();
     if (existing.length) {
       const last = path.join(dir, existing[existing.length - 1]);
-      try {
-        const lastContent = fs.readFileSync(last, 'utf-8');
-        if (lastContent === content) return;
-      } catch (_) {}
+      try { const lastContent = fs.readFileSync(last, 'utf-8'); if (lastContent === content) return; } catch (_) {}
     }
     const file = path.join(dir, `${timestamp()}.md`);
     fs.writeFileSync(file, content, 'utf-8');
-    // 超出上限淘汰最旧
     const all = fs.readdirSync(dir).filter(n => n.endsWith('.md')).sort();
     while (all.length > MAX_VERSIONS_PER_FILE) {
       const oldest = all.shift();
@@ -448,36 +478,32 @@ function saveDraft(content) {
   try {
     const dir = getDraftDir();
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    // 单一草稿文件（未命名只保留最新），如需多窗口可扩展为按窗口 id
     const file = path.join(dir, 'unsaved-draft.md');
     fs.writeFileSync(file, content, 'utf-8');
   } catch (err) { console.error('[draft]', err); }
 }
-// 命名文件成功保存后，清空未命名草稿
 function clearDraftIfAny() {
-  try {
-    const file = path.join(getDraftDir(), 'unsaved-draft.md');
-    if (fs.existsSync(file)) fs.unlinkSync(file);
-  } catch (_) {}
+  try { const file = path.join(getDraftDir(), 'unsaved-draft.md'); if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}
 }
 
-// 渲染进程通知脏状态
+// ============ 脏标记 / 关闭确认 ============
 ipcMain.on('set-dirty', (event, dirty) => {
-  currentDirty = !!dirty;
-  setTitle(currentFilePath, currentDirty);
+  const { ctx, win } = ctxFromEvent(event);
+  if (!ctx || !win) return;
+  ctx.currentDirty = !!dirty;
+  setTitle(win, ctx.currentFilePath, ctx.currentDirty);
 });
 
-// 关闭确认：弹原生对话框，返回用户选择
-ipcMain.handle('ask-close-confirm', async () => {
-  if (!mainWindow) return 'cancel';
-  const name = currentFilePath ? path.basename(currentFilePath) : '未命名';
-  const { response } = await dialog.showMessageBox(mainWindow, {
+ipcMain.handle('ask-close-confirm', async (event) => {
+  const { ctx, win } = ctxFromEvent(event);
+  if (!win) return 'cancel';
+  const name = (ctx && ctx.currentFilePath) ? path.basename(ctx.currentFilePath) : '未命名';
+  const { response } = await dialog.showMessageBox(win, {
     type: 'warning',
     buttons: ['保存', '不保存', '取消'],
-    defaultId: 0,
-    cancelId: 2,
+    defaultId: 0, cancelId: 2,
     title: '未保存的更改',
-    message: `“${name}” 有尚未保存的更改`,
+    message: `"${name}" 有尚未保存的更改`,
     detail: '关闭前是否要保存？'
   });
   if (response === 0) return 'save';
@@ -485,295 +511,161 @@ ipcMain.handle('ask-close-confirm', async () => {
   return 'cancel';
 });
 
-// 渲染层告知关闭流程的最终决定
 ipcMain.on('confirm-close-reply', (event, payload) => {
+  const { ctx, win } = ctxFromEvent(event);
   const action = payload && payload.action;
-  closingInProgress = false;
+  if (ctx) ctx.closingInProgress = false;
   if (action === 'discard') {
-    allowClose = true;
-    if (mainWindow) mainWindow.close();
+    if (ctx) ctx.allowClose = true;
+    if (win) win.close();
   } else {
-    // cancel：保持窗口
-    allowClose = false;
+    if (ctx) ctx.allowClose = false;
   }
 });
 
-// 新建
+// ============ 新建 ============
 function doNew() {
-  currentFilePath = null;
-  currentCodeMode = null;
-  setTitle(null, false);
-  mainWindow.webContents.send('file-new');
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) {
+    const ctx = getContext(win.id);
+    if (ctx) { ctx.currentFilePath = null; ctx.currentCodeMode = null; }
+    setTitle(win, null, false);
+    win.webContents.send('file-new');
+  }
 }
 
 // ============ 导出 ============
-// 缺省文件名（去扩展名）
-function exportStem() {
-  return currentFilePath
-    ? path.basename(currentFilePath, path.extname(currentFilePath))
+function exportStem(ctx) {
+  return ctx && ctx.currentFilePath
+    ? path.basename(ctx.currentFilePath, path.extname(ctx.currentFilePath))
     : '未命名';
 }
-// 文档同目录（用来解析 ./assets/xx 的相对路径）
-function docBaseDir() {
-  return currentFilePath ? path.dirname(currentFilePath) : null;
+function docBaseDir(ctx) {
+  return ctx && ctx.currentFilePath ? path.dirname(ctx.currentFilePath) : null;
 }
-// 把 html 中 <img src="./assets/xx"> 转成 file:// 绝对路径
-// PDF/长图/Word 渲染时图片必须可解析
 function absolutizeImageSrc(html, baseDir) {
-  if (!baseDir) return html;
   return html.replace(/<img\b([^>]*?)\ssrc=(["'])([^"']+)\2/gi, (m, pre, q, src) => {
+    if (/^mpmedia:\/\//i.test(src)) { const abs = decodeURI(src.replace(/^mpmedia:\/\//i, '')); return `<img${pre} src=${q}file://${abs}${q}`; }
     if (/^(https?:|file:|data:)/i.test(src)) return m;
-    try {
-      const abs = path.resolve(baseDir, src);
-      const url = 'file://' + abs.split(path.sep).join('/');
-      return `<img${pre} src=${q}${url}${q}`;
-    } catch (_) { return m; }
+    if (!baseDir) return m;
+    try { const abs = path.resolve(baseDir, src); const url = 'file://' + abs.split(path.sep).join('/'); return `<img${pre} src=${q}${url}${q}`; } catch (_) { return m; }
   });
 }
-// 加载 vditor 预览样式（一次性缓存）
 let cachedVditorCss = null;
 function loadVditorCss() {
   if (cachedVditorCss !== null) return cachedVditorCss;
-  try {
-    const cssPath = path.join(__dirname, 'node_modules', 'vditor', 'dist', 'index.css');
-    cachedVditorCss = fs.readFileSync(cssPath, 'utf-8');
-  } catch (_) { cachedVditorCss = ''; }
+  try { const cssPath = path.join(__dirname, 'node_modules', 'vditor', 'dist', 'index.css'); cachedVditorCss = fs.readFileSync(cssPath, 'utf-8'); } catch (_) { cachedVditorCss = ''; }
   return cachedVditorCss;
 }
-// 通用 HTML 包装：注入 vditor 样式 + 基础排版 + 打印优化
 function wrapExportHtml(title, bodyHtml, opts = {}) {
   const css = loadVditorCss();
-  const baseCss = `
-body{margin:0;padding:40px;background:#fff;color:#24292e;
-  font-family:-apple-system,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
-  line-height:1.7;font-size:16px;-webkit-font-smoothing:antialiased;}
-.vditor-reset{max-width:820px;margin:0 auto;}
-.vditor-reset img{max-width:100%;height:auto;}
-.vditor-reset pre{background:#f6f8fa;padding:16px;border-radius:6px;overflow:auto;
-  font-family:"SF Mono",Menlo,Consolas,monospace;font-size:14px;}
-.vditor-reset code{background:rgba(175,184,193,.2);padding:.2em .4em;border-radius:4px;
-  font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.9em;}
-.vditor-reset pre code{background:transparent;padding:0;}
-.vditor-reset table{border-collapse:collapse;margin:16px 0;}
-.vditor-reset table td,.vditor-reset table th{border:1px solid #d0d7de;padding:6px 12px;}
-.vditor-reset blockquote{border-left:4px solid #d0d7de;margin:16px 0;padding:0 16px;color:#57606a;}
-.vditor-reset h1,.vditor-reset h2{border-bottom:1px solid #eaecef;padding-bottom:.3em;}
-@media print{
-  body{padding:0;}
-  .vditor-reset{max-width:none;}
-  pre,blockquote,table,img{page-break-inside:avoid;}
-  h1,h2,h3,h4{page-break-after:avoid;}
-}
-`;
+  const baseCss = `body{margin:0;padding:40px;background:#fff;color:#24292e;font-family:-apple-system,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;line-height:1.7;font-size:16px;-webkit-font-smoothing:antialiased;}.vditor-reset{max-width:820px;margin:0 auto;}.vditor-reset img{max-width:100%;height:auto;}.vditor-reset pre{background:#f6f8fa;padding:16px;border-radius:6px;overflow:auto;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:14px;}.vditor-reset code{background:rgba(175,184,193,.2);padding:.2em .4em;border-radius:4px;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.9em;}.vditor-reset pre code{background:transparent;padding:0;}.vditor-reset table{border-collapse:collapse;margin:16px 0;}.vditor-reset table td,.vditor-reset table th{border:1px solid #d0d7de;padding:6px 12px;}.vditor-reset blockquote{border-left:4px solid #d0d7de;margin:16px 0;padding:0 16px;color:#57606a;}.vditor-reset h1,.vditor-reset h2{border-bottom:1px solid #eaecef;padding-bottom:.3em;}@media print{body{padding:0;}.vditor-reset{max-width:none;}pre,blockquote,table,img{page-break-inside:avoid;}h1,h2,h3,h4{page-break-after:avoid;}}`;
   return `<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>${title}</title><style>${css}\n${baseCss}\n${opts.extraCss || ''}</style></head><body><div class="vditor-reset">${bodyHtml}</div></body></html>`;
 }
 
-// ---- HTML 导出 ----
 ipcMain.handle('export-html', async (event, { html }) => {
-  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: exportStem() + '.html',
-    filters: [{ name: 'HTML', extensions: ['html'] }]
-  });
+  const { ctx, win } = ctxFromEvent(event);
+  if (!win) return { saved: false };
+  const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.html', filters: [{ name: 'HTML', extensions: ['html'] }] });
   if (canceled || !filePath) return { saved: false };
-  try {
-    const finalHtml = wrapExportHtml(path.basename(filePath), absolutizeImageSrc(html, docBaseDir()));
-    fs.writeFileSync(filePath, finalHtml, 'utf-8');
-    return { saved: true, path: filePath };
-  } catch (err) {
-    dialog.showErrorBox('导出 HTML 失败', String(err));
-    return { saved: false };
-  }
+  try { const finalHtml = wrapExportHtml(path.basename(filePath), absolutizeImageSrc(html, docBaseDir(ctx))); fs.writeFileSync(filePath, finalHtml, 'utf-8'); return { saved: true, path: filePath }; }
+  catch (err) { dialog.showErrorBox('导出 HTML 失败', String(err)); return { saved: false }; }
 });
 
-// ---- PDF 导出（Electron printToPDF，零额外依赖）----
 ipcMain.handle('export-pdf', async (event, { html }) => {
-  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: exportStem() + '.pdf',
-    filters: [{ name: 'PDF', extensions: ['pdf'] }]
-  });
+  const { ctx, win } = ctxFromEvent(event);
+  if (!win) return { saved: false };
+  const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.pdf', filters: [{ name: 'PDF', extensions: ['pdf'] }] });
   if (canceled || !filePath) return { saved: false };
   let pdfWin = null;
   try {
-    const fullHtml = wrapExportHtml(path.basename(filePath), absolutizeImageSrc(html, docBaseDir()));
+    const fullHtml = wrapExportHtml(path.basename(filePath), absolutizeImageSrc(html, docBaseDir(ctx)));
     pdfWin = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
     const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml);
     await pdfWin.loadURL(dataUrl);
-    await new Promise(r => setTimeout(r, 250)); // 等字体/图片就位
-    const data = await pdfWin.webContents.printToPDF({
-      printBackground: true,
-      pageSize: 'A4',
-      margins: { marginType: 'custom', top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 }
-    });
+    await new Promise(r => setTimeout(r, 250));
+    const data = await pdfWin.webContents.printToPDF({ printBackground: true, pageSize: 'A4', margins: { marginType: 'custom', top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 } });
     fs.writeFileSync(filePath, data);
     return { saved: true, path: filePath };
-  } catch (err) {
-    dialog.showErrorBox('导出 PDF 失败', String(err));
-    return { saved: false };
-  } finally {
-    if (pdfWin) try { pdfWin.destroy(); } catch (_) {}
-  }
+  } catch (err) { dialog.showErrorBox('导出 PDF 失败', String(err)); return { saved: false }; }
+  finally { if (pdfWin) try { pdfWin.destroy(); } catch (_) {} }
 });
 
-// ---- Word (.docx) 导出 ----
-// 渲染层用 html-docx-js 生成 Blob 字节数组传过来；主进程负责选路径 + 写盘
 ipcMain.handle('export-docx', async (event, { buffer }) => {
-  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: exportStem() + '.docx',
-    filters: [{ name: 'Word 文档', extensions: ['docx'] }]
-  });
+  const { ctx, win } = ctxFromEvent(event);
+  if (!win) return { saved: false };
+  const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.docx', filters: [{ name: 'Word 文档', extensions: ['docx'] }] });
   if (canceled || !filePath) return { saved: false };
-  try {
-    fs.writeFileSync(filePath, Buffer.from(buffer));
-    return { saved: true, path: filePath };
-  } catch (err) {
-    dialog.showErrorBox('导出 Word 失败', String(err));
-    return { saved: false };
-  }
+  try { fs.writeFileSync(filePath, Buffer.from(buffer)); return { saved: true, path: filePath }; }
+  catch (err) { dialog.showErrorBox('导出 Word 失败', String(err)); return { saved: false }; }
 });
 
-// ---- 长图（PNG）导出 ----
-// 用 offscreen BrowserWindow 加载完整 HTML，让 Chromium 原生渲染管线截全图。
-// 比渲染层 html2canvas 质量高得多：中文字体、KaTeX、代码块、emoji 全部 1:1 还原。
 ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
-  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: exportStem() + '.png',
-    filters: [{ name: 'PNG 图片', extensions: ['png'] }]
-  });
+  const { ctx, win } = ctxFromEvent(event);
+  if (!win) return { saved: false };
+  const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.png', filters: [{ name: 'PNG 图片', extensions: ['png'] }] });
   if (canceled || !filePath) return { saved: false };
-
-  // 先向渲染层要一份"和编辑器一致"的 HTML（含 vditor 渲染后的 DOM）
   const html = await new Promise((resolve) => {
-    if (!mainWindow) return resolve('');
+    if (!win) return resolve('');
     ipcMain.once('export-png-html', (_e, payload) => resolve(payload && payload.html || ''));
-    mainWindow.webContents.send('request-png-html');
-    // 5 秒超时兜底
+    win.webContents.send('request-png-html');
     setTimeout(() => resolve(''), 5000);
   });
-  if (!html) {
-    dialog.showErrorBox('导出长图失败', '获取页面内容超时');
-    return { saved: false };
-  }
-
-  let win = null;
+  if (!html) { dialog.showErrorBox('导出长图失败', '获取页面内容超时'); return { saved: false }; }
+  let expWin = null;
   try {
     const ratio = Math.max(1, Math.min(4, Number(pixelRatio) || 2));
-    const baseWidth = 820;        // 文档可视宽度（和编辑器接近）
-    const winWidth = baseWidth + 80; // 留点 padding
-
-    // 关键：enableLargerThanScreen 让 macOS 窗口可超出屏幕物理高度
-    // 否则 setContentSize 会被静默 clamp 到屏幕高度，长文档截图必然被截断
-    win = new BrowserWindow({
-      show: false,
-      x: -10000, y: -10000,           // 移到屏幕外，避免任何视觉干扰
-      width: winWidth,
-      height: 800,
-      useContentSize: true,
-      enableLargerThanScreen: true,   // ← macOS 必需
-      webPreferences: {
-        sandbox: true,
-        offscreen: false,
-        zoomFactor: ratio,            // 让 Chromium 按倍率渲染（更清晰）
-      },
+    const baseWidth = 820; const winWidth = baseWidth + 80;
+    expWin = new BrowserWindow({
+      show: false, x: -10000, y: -10000, width: winWidth, height: 800,
+      useContentSize: true, enableLargerThanScreen: true,
+      webPreferences: { sandbox: true, offscreen: false, zoomFactor: ratio },
     });
-
-    const fullHtml = wrapExportHtml('export', absolutizeImageSrc(html, docBaseDir()), {
-      // 长图专用：去掉编辑器 max-width / padding 限制由外层 body 控制
-      extraCss: `html,body{overflow:visible !important;}
-body{padding:30px 40px;}
-.vditor-reset{max-width:${baseWidth}px;margin:0 auto;}
-/* 字体平滑：在 retina 下细字更清晰 */
-*{ -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
-/* 别让代码块横向滚动条出现在截图里 */
-.vditor-reset pre{ overflow:visible; white-space:pre-wrap; word-break:break-word; }`
+    const fullHtml = wrapExportHtml('export', absolutizeImageSrc(html, docBaseDir(ctx)), {
+      extraCss: `html,body{overflow:visible !important;}body{padding:30px 40px;}.vditor-reset{max-width:${baseWidth}px;margin:0 auto;}*{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}.vditor-reset pre{overflow:visible;white-space:pre-wrap;word-break:break-word;}`
     });
-
     const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml);
-    await win.loadURL(dataUrl);
-    // 等字体/图片就绪 + 任何动画落定
+    await expWin.loadURL(dataUrl);
     await new Promise(r => setTimeout(r, 400));
-
-    // 量一下文档实际高度（CSS 像素），然后把窗口 resize 成整页高度
-    const docSize = await win.webContents.executeJavaScript(`
-      (() => {
-        const b = document.body, d = document.documentElement;
-        // 等所有图片加载完
-        const imgs = Array.from(document.images || []);
-        return Promise.all(imgs.map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = i.onerror = r; })))
-          .then(() => ({
-            w: Math.max(b.scrollWidth, d.scrollWidth, b.clientWidth, d.clientWidth),
-            h: Math.max(b.scrollHeight, d.scrollHeight, b.clientHeight, d.clientHeight)
-          }));
-      })()
-    `);
-
-    // 把窗口扩到能装下整篇文档（CSS 像素 → 设备像素由 zoomFactor 把控）
-    // 注意：useContentSize:true + enableLargerThanScreen:true，setContentSize 才能突破屏幕高度
+    const docSize = await expWin.webContents.executeJavaScript(`(() => { const b = document.body, d = document.documentElement; const imgs = Array.from(document.images || []); return Promise.all(imgs.map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = i.onerror = r; }))).then(() => ({ w: Math.max(b.scrollWidth, d.scrollWidth, b.clientWidth, d.clientWidth), h: Math.max(b.scrollHeight, d.scrollHeight, b.clientHeight, d.clientHeight) })); })()`);
     const targetW = Math.max(winWidth, Math.ceil(docSize.w));
     const targetH = Math.ceil(docSize.h) + 4;
-    win.setContentSize(targetW, targetH);
-    await new Promise(r => setTimeout(r, 350)); // 等 resize 后重新布局
-
-    // 二次校验：如果窗口实际尺寸被系统限制了，退化为分段拼接策略
-    const [actualW, actualH] = win.getContentSize();
+    expWin.setContentSize(targetW, targetH);
+    await new Promise(r => setTimeout(r, 350));
+    const [actualW, actualH] = expWin.getContentSize();
     const fits = actualH >= targetH - 2;
-
     let buf;
     if (fits) {
-      // 一次性整页截图
-      // 显式传 rect（CSS 像素），保证截全；不传 rect 时某些 Electron 版本只截可视区
-      const image = await win.webContents.capturePage({
-        x: 0, y: 0, width: targetW, height: targetH
-      });
+      const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
       buf = image.toPNG();
     } else {
-      // 窗口被 OS 限高（通常是 enableLargerThanScreen 失效，或文档极长超过 OS 上限）
-      // 此时改走 zoomFactor=1 重试一次，把物理像素需求降下来
-      console.warn('[export-png] window clamped to', actualH, 'need', targetH, '— retry @1x');
-      try { win.webContents.setZoomFactor(1); } catch (_) {}
+      console.warn('[export-png] window clamped, retry @1x');
+      try { expWin.webContents.setZoomFactor(1); } catch (_) {}
       await new Promise(r => setTimeout(r, 150));
-      win.setContentSize(targetW, targetH);
+      expWin.setContentSize(targetW, targetH);
       await new Promise(r => setTimeout(r, 350));
-      const [w2, h2] = win.getContentSize();
-      if (h2 < targetH - 2) {
-        // 还是装不下：明确报错，不要静默截断
-        throw new Error(`文档过长，截图窗口被系统限高（需 ${targetH}px / 实 ${h2}px）。请试试缩小内容或拆分导出。`);
-      }
-      const image = await win.webContents.capturePage({
-        x: 0, y: 0, width: targetW, height: targetH
-      });
+      const [w2, h2] = expWin.getContentSize();
+      if (h2 < targetH - 2) throw new Error(`文档过长（需 ${targetH}px / 实 ${h2}px）。`);
+      const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
       buf = image.toPNG();
     }
-
     fs.writeFileSync(filePath, buf);
     return { saved: true, path: filePath };
-  } catch (err) {
-    dialog.showErrorBox('导出长图失败', String(err));
-    return { saved: false };
-  } finally {
-    if (win) try { win.destroy(); } catch (_) {}
-  }
+  } catch (err) { dialog.showErrorBox('导出长图失败', String(err)); return { saved: false }; }
+  finally { if (expWin) try { expWin.destroy(); } catch (_) {} }
 });
 
-// ---- 渲染层导出 Word/长图时需要：完整 CSS + 文档目录 ----
-ipcMain.handle('get-export-resources', async () => ({
-  vditorCss: loadVditorCss(),
-  baseDir: docBaseDir(),
-}));
+ipcMain.handle('get-export-resources', async (event) => {
+  const { ctx } = ctxFromEvent(event);
+  return { vditorCss: loadVditorCss(), baseDir: docBaseDir(ctx) };
+});
 
-// 渲染层把 vditor.getHTML() 回传给主进程（长图导出用）
-// 注：使用 ipcMain.on（一次性的），由 export-png 里 once 监听
-
-// ---- 在 Finder 中显示图片目录 ----
-ipcMain.handle('reveal-assets-dir', async () => {
-  const baseDir = currentFilePath ? path.dirname(currentFilePath) : app.getPath('temp');
+ipcMain.handle('reveal-assets-dir', async (event) => {
+  const { ctx } = ctxFromEvent(event);
+  const baseDir = (ctx && ctx.currentFilePath) ? path.dirname(ctx.currentFilePath) : app.getPath('temp');
   const assetsDir = path.join(baseDir, 'assets');
-  try {
-    if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
-    shell.openPath(assetsDir);
-    return { ok: true, path: assetsDir };
-  } catch (err) {
-    return { ok: false, error: String(err) };
-  }
+  try { if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true }); shell.openPath(assetsDir); return { ok: true, path: assetsDir }; }
+  catch (err) { return { ok: false, error: String(err) }; }
 });
 
 // ============ 菜单 ============
@@ -795,26 +687,28 @@ function buildMenu() {
     {
       label: '文件',
       submenu: [
-        { label: '新建', accelerator: 'CmdOrCtrl+N', click: doNew },
+        { label: '新建标签页', accelerator: 'CmdOrCtrl+T', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('file-new'); } },
         { label: '打开…', accelerator: 'CmdOrCtrl+O', click: doOpen },
-        { label: '快速打开…', accelerator: 'CmdOrCtrl+P', click: () => mainWindow.webContents.send('quick-open') },
+        { label: '快速打开…', accelerator: 'CmdOrCtrl+P', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('quick-open'); } },
         { type: 'separator' },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: doSave },
         { label: '另存为…', accelerator: 'CmdOrCtrl+Shift+S', click: doSaveAs },
         { type: 'separator' },
-        { label: '加入收藏', accelerator: 'CmdOrCtrl+D', click: () => mainWindow.webContents.send('toggle-favorite') },
+        { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('close-active-tab'); } },
         { type: 'separator' },
-        { label: '历史版本…', click: () => mainWindow.webContents.send('show-versions') },
+        { label: '加入收藏', accelerator: 'CmdOrCtrl+D', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('toggle-favorite'); } },
+        { type: 'separator' },
+        { label: '历史版本…', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('show-versions'); } },
         { label: '在 Finder 中显示历史目录', click: () => shell.openPath(path.join(app.getPath('userData'), 'history')) },
-        { label: '在 Finder 中显示图片目录', click: () => mainWindow.webContents.send('reveal-assets-dir') },
+        { label: '在 Finder 中显示图片目录', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('reveal-assets-dir'); } },
         { type: 'separator' },
         {
           label: '导出',
           submenu: [
-            { label: 'PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: () => mainWindow.webContents.send('request-export', 'pdf') },
-            { label: 'HTML…', click: () => mainWindow.webContents.send('request-export', 'html') },
-            { label: 'Word…', click: () => mainWindow.webContents.send('request-export', 'docx') },
-            { label: '长图（PNG）…', click: () => mainWindow.webContents.send('request-export', 'png') }
+            { label: 'PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('request-export', 'pdf'); } },
+            { label: 'HTML…', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('request-export', 'html'); } },
+            { label: 'Word…', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('request-export', 'docx'); } },
+            { label: '长图（PNG）…', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('request-export', 'png'); } }
           ]
         }
       ]
@@ -822,53 +716,45 @@ function buildMenu() {
     {
       label: '编辑',
       submenu: [
-        { role: 'undo', label: '撤销' },
-        { role: 'redo', label: '重做' },
-        { type: 'separator' },
-        { role: 'cut', label: '剪切' },
-        { role: 'copy', label: '复制' },
-        { role: 'paste', label: '粘贴' },
-        { role: 'selectAll', label: '全选' }
+        { role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' },
+        { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }
       ]
     },
     {
       label: '视图',
       submenu: [
-        { label: '内容搜索…', accelerator: 'CmdOrCtrl+F', click: () => mainWindow.webContents.send('show-find') },
+        { label: '内容搜索…', accelerator: 'CmdOrCtrl+F', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('show-find'); } },
         { type: 'separator' },
-        { label: '切换大纲', accelerator: 'CmdOrCtrl+\\', click: () => mainWindow.webContents.send('toggle-outline') },
-        { label: '切换源码面板', accelerator: 'CmdOrCtrl+E', click: () => mainWindow.webContents.send('toggle-source') },
+        { label: '切换大纲', accelerator: 'CmdOrCtrl+\\', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('toggle-outline'); } },
+        { label: '切换源码面板', accelerator: 'CmdOrCtrl+E', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('toggle-source'); } },
         { type: 'separator' },
-        { label: '专注模式', accelerator: 'CmdOrCtrl+Shift+F', click: () => mainWindow.webContents.send('toggle-focus-mode') },
-        { label: '打字机模式', accelerator: 'CmdOrCtrl+Shift+T', click: () => mainWindow.webContents.send('toggle-typewriter-mode') },
+        { label: '专注模式', accelerator: 'CmdOrCtrl+Shift+F', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('toggle-focus-mode'); } },
+        { label: '打字机模式', accelerator: 'CmdOrCtrl+Shift+T', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('toggle-typewriter-mode'); } },
         { type: 'separator' },
         {
           label: '外观主题',
           submenu: [
-            { label: '亮色', type: 'radio', click: () => mainWindow.webContents.send('set-theme', 'light') },
-            { label: '暗色', type: 'radio', click: () => mainWindow.webContents.send('set-theme', 'dark') },
-            { label: '跟随系统', type: 'radio', click: () => mainWindow.webContents.send('set-theme', 'system') }
+            { label: '亮色', type: 'radio', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('set-theme', 'light'); } },
+            { label: '暗色', type: 'radio', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('set-theme', 'dark'); } },
+            { label: '跟随系统', type: 'radio', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('set-theme', 'system'); } }
           ]
         },
-        { label: '切换亮/暗', accelerator: 'CmdOrCtrl+/', click: () => mainWindow.webContents.send('toggle-theme') },
+        { label: '切换亮/暗', accelerator: 'CmdOrCtrl+/', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('toggle-theme'); } },
         {
           label: '样式主题',
           submenu: [
-            { label: '默认', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'default') },
-            { label: 'GitHub', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'github') },
-            { label: 'Night', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'night') },
-            { label: 'Sepia', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'sepia') },
-            { label: 'Slate', type: 'radio', click: () => mainWindow.webContents.send('set-style-theme', 'slate') }
+            { label: '默认', type: 'radio', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('set-style-theme', 'default'); } },
+            { label: 'GitHub', type: 'radio', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('set-style-theme', 'github'); } },
+            { label: 'Night', type: 'radio', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('set-style-theme', 'night'); } },
+            { label: 'Sepia', type: 'radio', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('set-style-theme', 'sepia'); } },
+            { label: 'Slate', type: 'radio', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('set-style-theme', 'slate'); } }
           ]
         },
-        { label: '下一个样式主题', accelerator: 'CmdOrCtrl+Shift+/', click: () => mainWindow.webContents.send('next-style-theme') },
+        { label: '下一个样式主题', accelerator: 'CmdOrCtrl+Shift+/', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('next-style-theme'); } },
         { type: 'separator' },
-        { role: 'resetZoom', label: '实际大小' },
-        { role: 'zoomIn', label: '放大' },
-        { role: 'zoomOut', label: '缩小' },
+        { role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' },
         { type: 'separator' },
-        { role: 'togglefullscreen', label: '全屏' },
-        { role: 'toggleDevTools', label: '开发者工具' }
+        { role: 'togglefullscreen', label: '全屏' }, { role: 'toggleDevTools', label: '开发者工具' }
       ]
     },
     {
@@ -883,36 +769,70 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// 打开最近文件（macOS Dock 拖拽到图标、Finder 双击、"打开方式"）
-app.on('open-file', (event, fp) => {
-  event.preventDefault();
-  openFile(fp);
-});
-
-// 渲染进程把窗口内拖入的文件路径回传，主进程读取内容并打开
+// ============ IPC: 文件拖入 ============
+app.on('open-file', (event, fp) => { event.preventDefault(); openFile(fp); });
 ipcMain.on('open-dropped-file', (event, fp) => {
-  openFile(fp);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) openFileInWindow(win, fp);
 });
 
-// 渲染进程初始化完成，可接收 file-opened；若有挂起的待打开文件，此时投递
-ipcMain.on('renderer-ready', () => {
-  rendererReady = true;
+// ============ IPC: 渲染进程就绪 ============
+ipcMain.on('renderer-ready', (event) => {
+  const { ctx, win } = ctxFromEvent(event);
+  if (!ctx || !win) return;
+  ctx.rendererReady = true;
+
+  // 如果有初始 tab（从 detach/新窗口创建），发送给渲染层
+  if (ctx._initialTab) {
+    const tab = ctx._initialTab;
+    win.webContents.send('file-opened', {
+      path: tab.filePath || '',
+      content: tab.content || '',
+      codeMode: tab.codeMode || null,
+    });
+    if (tab.filePath) {
+      ctx.currentFilePath = tab.filePath;
+      ctx.currentCodeMode = tab.codeMode;
+      setTitle(win, tab.filePath, !!tab.dirty);
+    }
+    delete ctx._initialTab;
+  }
+
+  // 冷启动待打开文件
   if (pendingOpenPath) {
     const fp = pendingOpenPath;
     pendingOpenPath = null;
-    openFile(fp);
+    openFileInWindow(win, fp);
   }
 });
 
-// 主题持久化：渲染进程通知当前是否暗色，主进程同步原生 vibrancy/背景与窗口外观
 ipcMain.on('set-native-theme', (event, mode) => {
-  // mode: 'light' | 'dark' | 'system'
-  if (mode === 'light' || mode === 'dark' || mode === 'system') {
-    nativeTheme.themeSource = mode;
-  }
+  if (mode === 'light' || mode === 'dark' || mode === 'system') nativeTheme.themeSource = mode;
 });
 
-// 列出目录内容（返回 md/txt + 已支持的代码/配置文件）
+// ============ IPC: Tab 激活通知 ============
+ipcMain.on('tab-activated', (event, { filePath, codeMode, dirty }) => {
+  const { ctx, win } = ctxFromEvent(event);
+  if (!ctx || !win) return;
+  ctx.currentFilePath = filePath || null;
+  ctx.currentCodeMode = codeMode || null;
+  ctx.currentDirty = !!dirty;
+  setTitle(win, ctx.currentFilePath, ctx.currentDirty);
+});
+
+// ============ IPC: 移到新窗口 ============
+ipcMain.on('open-in-new-window', (event, info) => {
+  const newWin = createWindow(info);
+  if (newWin) newWin.focus();
+});
+
+// ============ IPC: 在 Finder 中显示文件 ============
+ipcMain.on('reveal-file-in-finder', (event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) return;
+  shell.showItemInFolder(filePath);
+});
+
+// ============ IPC: 目录列表 / 最近文件 ============
 ipcMain.handle('list-directory', async (event, dirPath) => {
   try {
     if (!dirPath || !fs.existsSync(dirPath)) return [];
@@ -925,43 +845,61 @@ ipcMain.handle('list-directory', async (event, dirPath) => {
   } catch (_) { return []; }
 });
 
-// 获取最近文件（从 app 系统级 + 额外存储；这里简单返回空让渲染层从 localStorage 取）
 ipcMain.handle('get-recent-files', async () => {
-  return []; // 渲染层自己管理 localStorage
+  const data = readAppData();
+  return data.recentFiles || [];
 });
 
-// 图片上传：渲染进程把图片数据给主进程保存到 assets/ 目录
+// 渲染进程同步历史/收藏数据到主进程（持久化到 JSON 文件）
+ipcMain.on('sync-app-data', (event, { key, items }) => {
+  if (key === 'recentFiles' || key === 'favorites') {
+    replaceAppData(key, items);
+  }
+});
+
+// 渲染进程启动时拉取主进程持久化数据（用于恢复 localStorage）
+ipcMain.handle('read-app-data', async () => {
+  return readAppData();
+});
+
+// ============ IPC: 图片上传 ============
+// 使用 Electron 原生对话框选择图片（替代浏览器 <input type="file">，避免 Electron 中不弹出）
+ipcMain.handle('open-image-dialog', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
+  if (!win) return { canceled: true, files: [] };
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: '选择图片',
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'ico'] }]
+  });
+  if (canceled || !filePaths.length) return { canceled: true, files: [] };
+  const files = filePaths.map(fp => {
+    try {
+      const buf = fs.readFileSync(fp);
+      return { name: path.basename(fp), type: `image/${(path.extname(fp) || 'png').replace('.', '')}`, size: buf.length, buffer: Array.from(buf) };
+    } catch (e) { return null; }
+  }).filter(Boolean);
+  return { canceled: false, files };
+});
+
 ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }) => {
+  const { ctx } = ctxFromEvent(event);
   try {
-    // 确定图片保存目录：有已打开文件 → 同目录 assets/；否则 → 临时目录
-    const baseDir = currentFilePath
-      ? path.dirname(currentFilePath)
+    const baseDir = ctx && ctx.currentFilePath
+      ? path.dirname(ctx.currentFilePath)
       : app.getPath('temp');
     const assetsDir = path.join(baseDir, 'assets');
     if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
-
-    // 生成唯一文件名，避免冲突
     const ext = path.extname(name) || '.png';
-    const stem = path.basename(name, ext).replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_').slice(0, 40)
-               || 'image';
+    const stem = path.basename(name, ext).replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_').slice(0, 40) || 'image';
     const ts = Date.now();
     let filename = `${stem}${ext}`;
     let fullPath = path.join(assetsDir, filename);
-    // 文件名冲突时加时间戳后缀
-    if (fs.existsSync(fullPath)) {
-      filename = `${stem}_${ts}${ext}`;
-      fullPath = path.join(assetsDir, filename);
-    }
-
+    if (fs.existsSync(fullPath)) { filename = `${stem}_${ts}${ext}`; fullPath = path.join(assetsDir, filename); }
     const buf = Buffer.from(buffer);
     fs.writeFileSync(fullPath, buf);
-
-    // 返回给渲染层的 URL：统一用 file:// 绝对路径
-    // —— 这样编辑器内立即可见图片（相对路径在 IR 模式下不会渲染，会显示裂图）
-    // 真正保存 md 时，由 save-content 的预处理把绝对路径转回相对路径，保证 md 文件可移植
-    const fileUrl = 'file://' + fullPath.split(path.sep).join('/');
-    // 同时返回相对路径，供需要的场景使用
-    const relPath = currentFilePath ? './assets/' + filename : '';
+    const fileUrl = 'mpmedia://' + encodeURI(fullPath.split(path.sep).join('/'));
+    const relPath = (ctx && ctx.currentFilePath) ? './assets/' + filename : '';
     return { url: fileUrl, relPath, path: fullPath };
   } catch (err) {
     console.error('[MarkPad] 图片保存失败:', err);
@@ -969,9 +907,8 @@ ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }
   }
 });
 
-// 从命令行参数中提取可能的待打开文件（非 macOS 的 Finder/资源管理器双击、"打开方式"）
+// ============ 命令行参数 ============
 function fileFromArgv(argv) {
-  // 跳过可执行文件本身与 electron 的 flag 参数
   const args = argv.slice(app.isPackaged ? 1 : 2);
   const codeExtRe = new RegExp(`\\.(${CODE_EXT_LIST.join('|')})$`, 'i');
   for (const a of args) {
@@ -981,12 +918,60 @@ function fileFromArgv(argv) {
   return null;
 }
 
+// ============ 自定义协议 ============
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: 'mpmedia', privileges: { standard: false, secure: true, supportFetchAPI: true, stream: true } }
+]);
+
 app.whenReady().then(() => {
+  protocol.handle('app', (request) => {
+    const reqUrl = new URL(request.url);
+    const relativePath = reqUrl.pathname.replace(/^\//, '');
+    const filePath = path.normalize(path.join(__dirname, relativePath));
+    if (!filePath.startsWith(__dirname)) return new Response('Not Found', { status: 404 });
+    try {
+      const data = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = {
+        '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+        '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+        '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff',
+        '.ttf': 'font/ttf', '.eot': 'application/vnd.ms-fontobject', '.otf': 'font/otf',
+        '.webp': 'image/webp', '.wasm': 'application/wasm', '.map': 'application/json',
+      }[ext] || 'application/octet-stream';
+      const isText = /^(text\/|application\/javascript|application\/json|image\/svg)/.test(mime);
+      const ct = isText ? mime + '; charset=utf-8' : mime;
+      return new Response(data, { headers: { 'Content-Type': ct } });
+    } catch (_) { return new Response('Not Found', { status: 404 }); }
+  });
+
+  protocol.handle('mpmedia', (request) => {
+    try {
+      let p = request.url.replace(/^mpmedia:\/\//i, '');
+      p = decodeURI(p);
+      if (!p.startsWith('/')) p = '/' + p;
+      const filePath = path.normalize(p);
+      if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif|mp4|webm|mp3|wav|ogg)$/i.test(filePath)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      const data = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = {
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+        '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.avif': 'image/avif',
+        '.mp4': 'video/mp4', '.webm': 'video/webm',
+        '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+      }[ext] || 'application/octet-stream';
+      return new Response(data, { headers: { 'Content-Type': mime } });
+    } catch (_) { return new Response('Not Found', { status: 404 }); }
+  });
+
   createWindow();
   buildMenu();
-  setTitle(null, false);
 
-  // 冷启动命令行带文件（macOS 由 open-file 处理，这里兜底其它平台）
   const argFile = fileFromArgv(process.argv);
   if (argFile) pendingOpenPath = argFile;
 
@@ -995,12 +980,15 @@ app.whenReady().then(() => {
   });
 });
 
-// 拦截退出：若窗口仍存在且脏，让 close 流程先走完
 app.on('before-quit', (e) => {
-  if (mainWindow && currentDirty && !allowClose) {
-    e.preventDefault();
-    // 触发窗口 close 流程，它会发 confirm-close 给渲染层
-    mainWindow.close();
+  const wins = BrowserWindow.getAllWindows();
+  for (const win of wins) {
+    const ctx = getContext(win.id);
+    if (ctx && ctx.currentDirty && !ctx.allowClose) {
+      e.preventDefault();
+      win.close();
+      return;
+    }
   }
 });
 
