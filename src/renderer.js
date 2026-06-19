@@ -555,8 +555,8 @@ function initVditor(value) {
     input: () => {
       if (!syncingFromSource) {
         markDirty(true);
-        updateStats();
-        syncSourceFromVditor();
+        scheduleUpdateStats();
+        scheduleSyncSourceFromVditor();
         scheduleOutlineRefresh();
       }
     },
@@ -591,7 +591,8 @@ function handleInsertLink() {
       if (vditor && typeof vditor.insertValue === 'function') {
         vditor.insertValue(md);
         markDirty(true);
-        syncSourceFromVditor();
+        scheduleUpdateStats();
+        scheduleSyncSourceFromVditor();
       }
     });
   } catch (err) {
@@ -658,7 +659,8 @@ async function handleImageUploadFromDialog() {
     if (vditor && typeof vditor.insertValue === 'function') {
       vditor.insertValue(md, true);
       markDirty(true);
-      syncSourceFromVditor();
+      scheduleUpdateStats();
+      scheduleSyncSourceFromVditor();
     }
   } catch (err) {
     console.error('[MarkPad] 图片上传失败:', err);
@@ -681,7 +683,8 @@ async function handleImageUpload(files) {
     if (vditor && typeof vditor.insertValue === 'function') {
       vditor.insertValue(md, true);
       markDirty(true);
-      syncSourceFromVditor();
+      scheduleUpdateStats();
+      scheduleSyncSourceFromVditor();
     }
     return null;
   } catch (err) {
@@ -1170,27 +1173,42 @@ function setAutoSaveStatus(text) { const el = document.getElementById('status-au
 function updateStats() {
   if (currentCodeMode) { updateStatsForCode(); return; }
   if (!vditor) return;
-  const text = vditor.getValue() || '';
+  const text = getEditorContent();
   const cn = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
   const en = (text.match(/[a-zA-Z]+/g) || []).length;
   statusWords.textContent = `${cn + en} 字`;
 }
 
+// 字数统计无需实时，按键时 debounce，避免每个字符跑两次全文正则
+let statsDebounceTimer = null;
+function scheduleUpdateStats() {
+  if (statsDebounceTimer) clearTimeout(statsDebounceTimer);
+  statsDebounceTimer = setTimeout(() => { statsDebounceTimer = null; updateStats(); }, 300);
+}
+
 function syncSourceFromVditor(immediate) {
   if (!vditor || !vditorReady) return;
   if (syncingFromSource) return;
+  // 源码面板没显示时，没必要序列化全文同步（切到源码面板时会补一次 immediate）
+  if (!sourceVisible && !immediate) return;
   if (sourceEditor.matches(':focus')) return;
-  const val = vditor.getValue() || '';
+  const val = getEditorContent();
   if (sourceEditor.value === val) return;
   syncingFromVditor = true;
   sourceEditor.value = val;
   syncingFromVditor = false;
 }
+let syncSourceDebounceTimer = null;
+function scheduleSyncSourceFromVditor() {
+  if (!sourceVisible) return; // 面板隐藏时彻底跳过
+  if (syncSourceDebounceTimer) clearTimeout(syncSourceDebounceTimer);
+  syncSourceDebounceTimer = setTimeout(() => { syncSourceDebounceTimer = null; syncSourceFromVditor(); }, 300);
+}
 function syncVditorFromSource() {
   if (!vditor || !vditorReady) return;
   if (syncingFromVditor) return;
   const val = sourceEditor.value;
-  if ((vditor.getValue() || '') === val) return;
+  if (getEditorContent() === val) return;
   syncingFromSource = true;
   vditor.setValue(val);
   syncingFromSource = false;
@@ -1379,6 +1397,13 @@ function highlightCode() {
   highlight.scrollLeft = codeEditor.scrollLeft;
 }
 
+// Prism.highlight 对大文件是 CPU 密集操作，打字时 debounce 避免每键全文重算
+let highlightDebounceTimer = null;
+function scheduleHighlightCode() {
+  if (highlightDebounceTimer) clearTimeout(highlightDebounceTimer);
+  highlightDebounceTimer = setTimeout(() => { highlightDebounceTimer = null; highlightCode(); }, 150);
+}
+
 if (codeEditor) {
   codeEditor.addEventListener('scroll', () => {
     if (!currentCodeMode) return;
@@ -1404,7 +1429,7 @@ if (codeEditor) {
     if (!currentCodeMode) return;
     markDirty(true);
     updateStatsForCode();
-    highlightCode();
+    scheduleHighlightCode();
     scheduleAutoSave();
   });
   codeEditor.addEventListener('keyup', () => { if (currentCodeMode) updateStatsForCode(); });
@@ -1417,6 +1442,8 @@ if (codeEditor) {
       codeEditor.value = v.slice(0, s) + '  ' + v.slice(en);
       codeEditor.selectionStart = codeEditor.selectionEnd = s + 2;
       markDirty(true);
+      scheduleHighlightCode();
+      scheduleAutoSave();
     }
   });
 }

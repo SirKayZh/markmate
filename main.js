@@ -165,7 +165,7 @@ async function doOpen() {
   openFileInWindow(focusedWin, filePaths[0]);
 }
 
-function openFileInWindow(win, fp) {
+async function openFileInWindow(win, fp) {
   if (!fp) return;
   const ctx = getContext(win.id);
   if (!ctx || !ctx.rendererReady) {
@@ -174,7 +174,8 @@ function openFileInWindow(win, fp) {
     return;
   }
   try {
-    const rawContent = fs.readFileSync(fp, 'utf-8');
+    // 异步读取，避免大文件冻结主进程（窗口可继续响应）
+    const rawContent = await fs.promises.readFile(fp, 'utf-8');
     const codeLang = detectCodeLang(fp);
     ctx.currentFilePath = fp;
     ctx.currentCodeMode = codeLang ? { lang: codeLang } : null;
