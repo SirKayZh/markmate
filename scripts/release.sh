@@ -49,9 +49,13 @@ if ! grep -q "## \[$NEW\]" CHANGELOG.md 2>/dev/null; then
   read -r _ || true
 fi
 
-# 打包
+# 打包 macOS DMG
 echo "==> 开始打包 DMG"
 bash scripts/build-dmg.sh
+
+# 打包 Windows exe (NSIS 安装版 + 便携版)
+echo "==> 开始打包 Windows exe"
+bash scripts/build-win.sh
 
 # git 提交 + 打 tag
 echo "==> 提交并打 tag v$NEW"
