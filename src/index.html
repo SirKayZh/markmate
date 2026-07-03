@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MarkPad</title>
+  <title>MarkMate</title>
   <link rel="stylesheet" href="../node_modules/vditor/dist/index.css">
   <link rel="stylesheet" href="../node_modules/prismjs/themes/prism.css">
   <link rel="stylesheet" href="styles.css">
@@ -86,11 +86,70 @@
     <div id="outline-resizer" class="resizer"></div>
 
     <main id="editor-wrap">
+      <div id="loading-overlay"><span>加载中…</span></div>
       <div id="vditor"></div>
       <div id="code-editor-wrap" style="display:none">
         <pre id="code-highlight" aria-hidden="true"><code></code></pre>
         <textarea id="code-editor" spellcheck="false" autocomplete="off"
                   wrap="off" placeholder="代码 / 配置文件…"></textarea>
+      </div>
+      <!-- JSON 结构化查看器 -->
+      <div id="json-viewer-wrap" style="display:none">
+        <div id="json-viewer-toolbar">
+          <div class="json-toolbar-left">
+            <button class="json-view-btn active" data-view="tree" title="树形视图" onclick="switchJsonView('tree')">📊 树形</button>
+            <button class="json-view-btn" data-view="chat" title="对话视图（Alpaca / ShareGPT / Messages）" onclick="switchJsonView('chat')">💬 对话</button>
+            <button class="json-view-btn" data-view="raw" title="原始文本编辑" onclick="switchJsonView('raw')">📝 原始</button>
+            <span class="json-toolbar-sep"></span>
+            <button id="json-collapse-all" title="全部折叠" onclick="jsonCollapseAll()">⊟ 折叠</button>
+            <button id="json-expand-all" title="全部展开" onclick="jsonExpandAll()">⊞ 展开</button>
+            <span class="json-toolbar-sep"></span>
+            <button id="json-stats-toggle" title="显示/隐藏统计面板">📈 统计</button>
+            <button id="json-filter-toggle" title="按字段筛选条目">🔍 筛选</button>
+          </div>
+          <div class="json-toolbar-right">
+            <span id="json-node-count"></span>
+            <button id="chat-discard-btn" title="放弃未保存的标注修改" style="display:none">↩ 放弃</button>
+            <button id="chat-save-btn" title="保存标注修改到原文件" style="display:none">💾 保存</button>
+            <button id="chat-save-next-btn" title="保存当前页并跳到下一页继续标注" style="display:none">下一页 ▶</button>
+            <button id="jsonl-export-btn" title="导出当前结果为新 JSONL 文件" style="display:none">⬇ 导出</button>
+          </div>
+        </div>
+        <!-- JSON 解析错误提示 -->
+        <div id="json-error-bar" style="display:none"></div>
+        <!-- 筛选栏 -->
+        <div id="json-filter-bar" style="display:none">
+          <select id="json-filter-field" title="字段"></select>
+          <select id="json-filter-op" title="条件">
+            <option value="contains">包含</option>
+            <option value="not_contains">不包含</option>
+            <option value="eq">等于</option>
+            <option value="empty">为空</option>
+            <option value="not_empty">非空</option>
+          </select>
+          <input id="json-filter-value" type="text" placeholder="筛选值…" spellcheck="false" autocomplete="off">
+          <button id="json-filter-apply">应用</button>
+          <button id="json-filter-clear">清除</button>
+          <span id="json-filter-status"></span>
+        </div>
+        <!-- 树视图 -->
+        <div id="json-tree-container" class="json-view-content"></div>
+        <!-- 对话视图 -->
+        <div id="json-chat-container" class="json-view-content" style="display:none"></div>
+        <!-- 统计面板 -->
+        <div id="json-stats-panel" style="display:none">
+          <div class="json-stats-grid"></div>
+        </div>
+        <!-- JSONL 分页 -->
+        <div id="jsonl-pager" style="display:none">
+          <button id="jsonl-prev" disabled onclick="changeJsonlPage(-1)">◀ 上一页</button>
+          <span id="jsonl-page-info">第 1 页</span>
+          <button id="jsonl-next" onclick="changeJsonlPage(1)">下一页 ▶</button>
+          <span class="jsonl-jump-wrap">
+            跳至 <input id="jsonl-jump-input" type="number" min="1" title="页码"> 页
+            <button id="jsonl-jump-btn" onclick="jumpToJsonlPage()">Go</button>
+          </span>
+        </div>
       </div>
     </main>
 
@@ -127,7 +186,7 @@
     <button data-action="close-others">关闭其他标签页</button>
     <button data-action="close-right">关闭右侧标签页</button>
     <button data-action="detach">移到新窗口</button>
-    <button data-action="reveal" id="tab-ctx-reveal">在 Finder 中显示</button>
+    <button data-action="reveal" id="tab-ctx-reveal">在文件夹中显示</button>
   </div>
 
   <div id="quick-open-overlay" class="hidden">
@@ -155,6 +214,10 @@
   </div>
   <div id="find-bar" class="hidden">
     <input id="find-input" type="text" placeholder="在文档中搜索…" spellcheck="false" autocomplete="off">
+    <div id="find-scope" class="hidden">
+      <button id="find-scope-page" class="find-scope-btn active" type="button" title="只搜当前页">本页</button>
+      <button id="find-scope-all" class="find-scope-btn" type="button" title="搜索整个文件（含其它页）">全部</button>
+    </div>
     <span id="find-count">0/0</span>
     <button id="find-prev" type="button" title="上一个（⇧Enter）" aria-label="上一个">↑</button>
     <button id="find-next" type="button" title="下一个（Enter）" aria-label="下一个">↓</button>
@@ -185,6 +248,8 @@
     <button id="draft-discard" type="button">忽略</button>
   </div>
 
+  <script src="json-tree.js"></script>
+  <script src="llm-dataset.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

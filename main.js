@@ -2,6 +2,9 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme, protocol 
 const path = require('path');
 const fs = require('fs');
 
+// ============ 平台检测 ============
+const isMac = process.platform === 'darwin';
+
 // ============ 多窗口状态管理 ============
 // 每个窗口维护独立的文件上下文
 const windowContexts = new Map(); // winId -> { currentFilePath, currentCodeMode, currentDirty, rendererReady, allowClose, closingInProgress }
@@ -32,7 +35,7 @@ function createWindow(initialTab) {
     height: 760,
     minWidth: 600,
     minHeight: 400,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
     backgroundColor: '#ffffff',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -50,7 +53,14 @@ function createWindow(initialTab) {
 
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
 
-  if (process.env.MARKPAD_DEBUG === '1') {
+  // Windows 上给 body 打 platform 标记（用于 CSS 隐藏 drag-bar 等）
+  if (!isMac) {
+    win.webContents.on('did-finish-load', () => {
+      win.webContents.executeJavaScript(`document.body.setAttribute('data-platform','${process.platform}')`).catch(() => {});
+    });
+  }
+
+  if (process.env.MARKMATE_DEBUG === '1') {
     win.webContents.openDevTools({ mode: 'right' });
   }
 
@@ -137,7 +147,7 @@ function formatCodeText(raw, codeLang) {
 function setTitle(win, filePath, dirty) {
   if (!win || win.isDestroyed()) return;
   const name = filePath ? path.basename(filePath) : '未命名';
-  win.setTitle(`${dirty ? '• ' : ''}${name} — MarkPad`);
+  win.setTitle(`${dirty ? '• ' : ''}${name} — MarkMate`);
   const absPath = filePath && path.isAbsolute(filePath) ? filePath : (filePath ? path.resolve(filePath) : '');
   win.setRepresentedFilename(absPath);
   win.setDocumentEdited(!!dirty);
@@ -312,6 +322,25 @@ ipcMain.handle('save-content', async (event, { content, saveAs }) => {
   }
 });
 
+// ============ 导出任意文本到指定路径（如筛选后的 JSONL 子集） ============
+ipcMain.handle('save-text-as', async (event, { content, defaultName, ext }) => {
+  const { win } = ctxFromEvent(event);
+  if (!win) return { saved: false };
+  const e = (ext || 'jsonl').replace(/^\./, '');
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    defaultPath: defaultName || ('export.' + e),
+    filters: [{ name: e.toUpperCase(), extensions: [e] }, { name: '所有文件', extensions: ['*'] }],
+  });
+  if (canceled || !filePath) return { saved: false };
+  try {
+    fs.writeFileSync(filePath, content, 'utf-8');
+    return { saved: true, path: filePath };
+  } catch (err) {
+    dialog.showErrorBox('导出失败', String(err));
+    return { saved: false, error: String(err) };
+  }
+});
+
 // ============ 自动保存 ============
 ipcMain.handle('auto-save', async (event, { content }) => {
   const { ctx } = ctxFromEvent(event);
@@ -330,6 +359,20 @@ ipcMain.handle('auto-save', async (event, { content }) => {
     console.error('[auto-save]', err);
     return { saved: false, error: String(err) };
   }
+});
+
+// ============ 大文件覆盖确认 ============
+ipcMain.handle('confirm-overwrite', async (event, { message }) => {
+  const { win } = ctxFromEvent(event);
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['取消', '仍然保存'],
+    defaultId: 0,
+    cancelId: 0,
+    message: '确认覆盖整个文件？',
+    detail: message || '',
+  });
+  return response === 1; // true = 用户确认保存
 });
 
 // ============ 格式化 ============
@@ -408,7 +451,7 @@ function appDataDir() { return path.join(app.getPath('userData'), 'history'); }
 function getDraftDir() { return path.join(app.getPath('userData'), 'drafts'); }
 
 // ============ 持久化数据（不依赖 localStorage origin） ============
-const APP_DATA_FILE = path.join(app.getPath('userData'), 'markpad-data.json');
+const APP_DATA_FILE = path.join(app.getPath('userData'), 'markmate-data.json');
 function readAppData() {
   try {
     if (fs.existsSync(APP_DATA_FILE)) {
@@ -524,6 +567,23 @@ ipcMain.on('confirm-close-reply', (event, payload) => {
   }
 });
 
+// 对话视图切 Tab 时，若有未保存标注，弹三态确认（保存/放弃/取消）
+ipcMain.handle('ask-chat-edits-confirm', async (event, { count }) => {
+  const { win } = ctxFromEvent(event);
+  if (!win) return 'cancel';
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['保存', '放弃修改', '取消'],
+    defaultId: 0, cancelId: 2,
+    title: '未保存的标注',
+    message: `当前对话视图有 ${count} 条未保存的标注修改`,
+    detail: '切换标签页前是否要保存？选择"放弃修改"将丢失这些编辑。'
+  });
+  if (response === 0) return 'save';
+  if (response === 1) return 'discard';
+  return 'cancel';
+});
+
 // ============ 新建 ============
 function doNew() {
   const win = BrowserWindow.getFocusedWindow();
@@ -560,7 +620,7 @@ function loadVditorCss() {
 }
 function wrapExportHtml(title, bodyHtml, opts = {}) {
   const css = loadVditorCss();
-  const baseCss = `body{margin:0;padding:40px;background:#fff;color:#24292e;font-family:-apple-system,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;line-height:1.7;font-size:16px;-webkit-font-smoothing:antialiased;}.vditor-reset{max-width:820px;margin:0 auto;}.vditor-reset img{max-width:100%;height:auto;}.vditor-reset pre{background:#f6f8fa;padding:16px;border-radius:6px;overflow:auto;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:14px;}.vditor-reset code{background:rgba(175,184,193,.2);padding:.2em .4em;border-radius:4px;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.9em;}.vditor-reset pre code{background:transparent;padding:0;}.vditor-reset table{border-collapse:collapse;margin:16px 0;}.vditor-reset table td,.vditor-reset table th{border:1px solid #d0d7de;padding:6px 12px;}.vditor-reset blockquote{border-left:4px solid #d0d7de;margin:16px 0;padding:0 16px;color:#57606a;}.vditor-reset h1,.vditor-reset h2{border-bottom:1px solid #eaecef;padding-bottom:.3em;}@media print{body{padding:0;}.vditor-reset{max-width:none;}pre,blockquote,table,img{page-break-inside:avoid;}h1,h2,h3,h4{page-break-after:avoid;}}`;
+  const baseCss = `body{margin:0;padding:40px;background:#fff;color:#24292e;font-family:-apple-system,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;line-height:1.7;font-size:16px;-webkit-font-smoothing:antialiased;}.vditor-reset{max-width:820px;margin:0 auto;}.vditor-reset img{max-width:100%;height:auto;}.vditor-reset pre{background:#f6f8fa;padding:16px;border-radius:6px;overflow:auto;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:14px;}.vditor-reset code{background:rgba(175,184,193,.2);padding:.2em .4em;border-radius:4px;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.9em;}.vditor-reset pre code{background:transparent;padding:0;}.vditor-reset table{border-collapse:collapse;margin:16px 0;font-size:14px;}.vditor-reset table td,.vditor-reset table th{border:1px solid #d0d7de;padding:4px 6px;word-wrap:break-word;overflow-wrap:break-word;}.vditor-reset blockquote{border-left:4px solid #d0d7de;margin:16px 0;padding:0 16px;color:#57606a;}.vditor-reset h1,.vditor-reset h2{border-bottom:1px solid #eaecef;padding-bottom:.3em;}@media print{body{padding:0;}.vditor-reset{max-width:none;}.vditor-reset table{display:table !important;width:100% !important;table-layout:auto !important;overflow:visible !important;font-size:11px;word-break:normal !important;}.vditor-reset table td,.vditor-reset table th{padding:3px 4px;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;overflow:visible !important;}.vditor-reset table thead{display:table-header-group;}.vditor-reset table tr{display:table-row !important;}pre,blockquote,img{page-break-inside:avoid;}tr{page-break-inside:avoid;}h1,h2,h3,h4{page-break-after:avoid;}}`;
   return `<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>${title}</title><style>${css}\n${baseCss}\n${opts.extraCss || ''}</style></head><body><div class="vditor-reset">${bodyHtml}</div></body></html>`;
 }
 
@@ -619,7 +679,7 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
     const baseWidth = 820; const winWidth = baseWidth + 80;
     expWin = new BrowserWindow({
       show: false, x: -10000, y: -10000, width: winWidth, height: 800,
-      useContentSize: true, enableLargerThanScreen: true,
+      useContentSize: true, enableLargerThanScreen: isMac,  // macOS only，Windows 上无效
       webPreferences: { sandbox: true, offscreen: false, zoomFactor: ratio },
     });
     const fullHtml = wrapExportHtml('export', absolutizeImageSrc(html, docBaseDir(ctx)), {
@@ -640,15 +700,38 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
       const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
       buf = image.toPNG();
     } else {
+      // 窗口被系统 clamp 了（Windows 无 enableLargerThanScreen）
       console.warn('[export-png] window clamped, retry @1x');
       try { expWin.webContents.setZoomFactor(1); } catch (_) {}
       await new Promise(r => setTimeout(r, 150));
       expWin.setContentSize(targetW, targetH);
       await new Promise(r => setTimeout(r, 350));
       const [w2, h2] = expWin.getContentSize();
-      if (h2 < targetH - 2) throw new Error(`文档过长（需 ${targetH}px / 实 ${h2}px）。`);
-      const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
-      buf = image.toPNG();
+      if (h2 >= targetH - 2) {
+        const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
+        buf = image.toPNG();
+      } else if (!isMac) {
+        // Windows: 尝试逐级降低 zoom 适配内容
+        let winFit = false;
+        for (const z of [0.7, 0.5, 0.35]) {
+          try { expWin.webContents.setZoomFactor(z); } catch (_) { break; }
+          await new Promise(r => setTimeout(r, 150));
+          expWin.setContentSize(targetW, targetH);
+          await new Promise(r => setTimeout(r, 350));
+          const [wz, hz] = expWin.getContentSize();
+          if (hz >= targetH - 2) {
+            const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
+            buf = image.toPNG();
+            winFit = true;
+            break;
+          }
+        }
+        if (!winFit) {
+          throw new Error(`文档过长（需 ${targetH}px / 屏幕高 ${h2}px）。\nWindows 上导出超长文档 PNG 受限，建议改用 PDF 导出。`);
+        }
+      } else {
+        throw new Error(`文档过长（需 ${targetH}px / 实 ${h2}px）。`);
+      }
     }
     fs.writeFileSync(filePath, buf);
     return { saved: true, path: filePath };
@@ -671,18 +754,17 @@ ipcMain.handle('reveal-assets-dir', async (event) => {
 
 // ============ 菜单 ============
 function buildMenu() {
-  const isMac = process.platform === 'darwin';
   const template = [
     ...(isMac ? [{
       label: app.name,
       submenu: [
-        { role: 'about', label: '关于 MarkPad' },
+        { role: 'about', label: '关于 MarkMate' },
         { type: 'separator' },
-        { role: 'hide', label: '隐藏 MarkPad' },
+        { role: 'hide', label: '隐藏 MarkMate' },
         { role: 'hideOthers', label: '隐藏其他' },
         { role: 'unhide', label: '全部显示' },
         { type: 'separator' },
-        { role: 'quit', label: '退出 MarkPad' }
+        { role: 'quit', label: '退出 MarkMate' }
       ]
     }] : []),
     {
@@ -700,8 +782,8 @@ function buildMenu() {
         { label: '加入收藏', accelerator: 'CmdOrCtrl+D', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('toggle-favorite'); } },
         { type: 'separator' },
         { label: '历史版本…', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('show-versions'); } },
-        { label: '在 Finder 中显示历史目录', click: () => shell.openPath(path.join(app.getPath('userData'), 'history')) },
-        { label: '在 Finder 中显示图片目录', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('reveal-assets-dir'); } },
+        { label: isMac ? '在 Finder 中显示历史目录' : '在文件夹中显示历史目录', click: () => shell.openPath(path.join(app.getPath('userData'), 'history')) },
+        { label: isMac ? '在 Finder 中显示图片目录' : '在文件夹中显示图片目录', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('reveal-assets-dir'); } },
         { type: 'separator' },
         {
           label: '导出',
@@ -770,7 +852,19 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// ============ IPC: 文件拖入 ============
+// ============ IPC: 文件拖入 / 双击打开 ============
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) { app.quit(); } else {
+  app.on('second-instance', (_event, argv) => {
+    // 用户尝试打开第二个实例 → 在当前实例中打开文件
+    const fp = fileFromArgv(argv);
+    if (fp) openFile(fp);
+    // 聚焦已有窗口
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+  });
+}
+
 app.on('open-file', (event, fp) => { event.preventDefault(); openFile(fp); });
 ipcMain.on('open-dropped-file', (event, fp) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -827,7 +921,7 @@ ipcMain.on('open-in-new-window', (event, info) => {
   if (newWin) newWin.focus();
 });
 
-// ============ IPC: 在 Finder 中显示文件 ============
+// ============ IPC: 在文件夹中显示文件 ============
 ipcMain.on('reveal-file-in-finder', (event, filePath) => {
   if (!filePath || !fs.existsSync(filePath)) return;
   shell.showItemInFolder(filePath);
@@ -903,7 +997,7 @@ ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }
     const relPath = (ctx && ctx.currentFilePath) ? './assets/' + filename : '';
     return { url: fileUrl, relPath, path: fullPath };
   } catch (err) {
-    console.error('[MarkPad] 图片保存失败:', err);
+    console.error('[MarkMate] 图片保存失败:', err);
     return { url: '', path: '' };
   }
 });

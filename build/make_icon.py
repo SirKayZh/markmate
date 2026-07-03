@@ -29,7 +29,7 @@ img.paste(grad, (0, 0), mask)
 
 d = ImageDraw.Draw(img)
 
-# 画一个 "M" 字母（Markdown M 风格 / MarkPad）
+# 画一个 "M" 字母（Markdown M 风格 / MarkMate）
 # 用白色粗笔画一个类似 Markdown logo 的 M + 下箭头
 cx = SIZE // 2
 white = (255, 255, 255, 255)

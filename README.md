@@ -1,4 +1,4 @@
-# MarkPad ⚡
+# MarkMate ⚡
 
 > **The free, open-source Typora alternative.** A lightning-fast WYSIWYG Markdown editor for macOS & Windows — write in peace, navigate with ease, never lose your work. Also opens JSON, YAML, XML, and JSONL with syntax highlighting.
 >
@@ -9,23 +9,23 @@
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![release](https://img.shields.io/badge/release-v1.6.1-3b82f6)
 
-**English** · [简体中文](README.zh-CN.md) · [🌐 Documentation](https://sirkyzh.github.io/markpad)
+**English** · [简体中文](README.zh-CN.md) · [🌐 Documentation](https://sirkyzh.github.io/markmate)
 
 <p align="center">
-  <img src="build/preview-icon.png" width="128" alt="MarkPad icon">
+  <img src="build/preview-icon.png" width="128" alt="MarkMate icon">
 </p>
 
 <p align="center">
-  <a href="https://github.com/SirKayZh/markpad/releases"><img src="https://img.shields.io/badge/⬇️_Download-Latest_Release-3b82f6?style=for-the-badge" alt="Download"></a>
+  <a href="https://github.com/SirKayZh/markmate/releases"><img src="https://img.shields.io/badge/⬇️_Download-Latest_Release-3b82f6?style=for-the-badge" alt="Download"></a>
   &nbsp;
-  <a href="https://github.com/SirKayZh/markpad/issues/new"><img src="https://img.shields.io/badge/🐛_Report_Bug-gray?style=for-the-badge" alt="Report Bug"></a>
+  <a href="https://github.com/SirKayZh/markmate/issues/new"><img src="https://img.shields.io/badge/🐛_Report_Bug-gray?style=for-the-badge" alt="Report Bug"></a>
   &nbsp;
-  <a href="https://sirkyzh.github.io/markpad/feedback"><img src="https://img.shields.io/badge/📝_Feedback_Survey-gray?style=for-the-badge" alt="Feedback"></a>
+  <a href="https://sirkyzh.github.io/markmate/feedback"><img src="https://img.shields.io/badge/📝_Feedback_Survey-gray?style=for-the-badge" alt="Feedback"></a>
 </p>
 
 ---
 
-> 📸 **Screenshots coming soon** — we're preparing high-quality UI screenshots. In the meantime, check out the [feature list](#-features) below or [try it yourself](https://github.com/SirKayZh/markpad/releases).
+> 📸 **Screenshots coming soon** — we're preparing high-quality UI screenshots. In the meantime, check out the [feature list](#-features) below or [try it yourself](https://github.com/SirKayZh/markmate/releases).
 
 ---
 
@@ -69,7 +69,7 @@
 
 ### 💻 Lightweight Code & Config Viewer (v1.5.0+)
 
-- **JSON / XML / YAML / JSONL** — open these files directly in MarkPad as a lightweight viewer/editor
+- **JSON / XML / YAML / JSONL** — open these files directly in MarkMate as a lightweight viewer/editor
 - **Syntax highlighting** — Prism.js-powered highlighting with dual light/dark theme color schemes
 - **One-click format** — ⌥⌘L to beautify JSON/JSONL/XML; dedicated toolbar button with disabled gray-out hints
 - **File type icons** — sidebar shows distinct emoji badges per format (📝 .md · 📊 .json · 📋 .xml · ⚙️ .yml/.yaml)
@@ -87,7 +87,7 @@
 ### 🍎 macOS Integration (also runs on Windows)
 
 - **Drag & drop to open** — drag `.md` files onto the window, Dock icon, or even onto a closed app
-- **File association** — registered handler for `.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt` `.xml` `.json` `.jsonl` `.yml` `.yaml`; set MarkPad as your default editor in Finder
+- **File association** — registered handler for `.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt` `.xml` `.json` `.jsonl` `.yml` `.yaml`; set MarkMate as your default editor in Finder
 - **Native feel** — inset traffic lights, document-dirty dot, recent files menu, word count in status bar
 - **Privacy-aware** — won't trigger macOS "access Desktop/Downloads" permission dialogs on first use
 
@@ -95,9 +95,9 @@
 
 ---
 
-## 🤔 Why MarkPad?
+## 🤔 Why MarkMate?
 
-| | **MarkPad** | **Typora** | **VS Code** |
+| | **MarkMate** | **Typora** | **VS Code** |
 |---|:---:|:---:|:---:|
 | **Price** | ✅ Free & Open Source | ❌ $14.99 | ✅ Free |
 | **WYSIWYG Editing** | ✅ Instant render | ✅ Instant render | ❌ Split preview |
@@ -114,29 +114,29 @@
 
 ## 📦 Install
 
-Download the latest release from the [Releases](https://github.com/SirKayZh/markpad/releases) page:
+Download the latest release from the [Releases](https://github.com/SirKayZh/markmate/releases) page:
 
 **macOS:**
-- Apple Silicon (M1/M2/M3/M4…): `MarkPad-1.6.1-arm64.dmg`
-- Intel: `MarkPad-1.6.1-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkMate-1.6.1-arm64.dmg`
+- Intel: `MarkMate-1.6.1-x64.dmg`
 
 **Windows:**
-- `MarkPad-1.6.1-x64-setup.exe` — NSIS installer (recommended)
-- `MarkPad-1.6.1-x64-portable.exe` — standalone, no install needed
+- `MarkMate-1.6.1-x64-setup.exe` — NSIS installer (recommended)
+- `MarkMate-1.6.1-x64-portable.exe` — standalone, no install needed
 
 > The app is **not code-signed / notarized** on either platform.
 >
-> **macOS**: right-click app → **Open**, or run `xattr -cr /Applications/MarkPad.app`
+> **macOS**: right-click app → **Open**, or run `xattr -cr /Applications/MarkMate.app`
 >
 > **Windows**: click **More info** → **Run anyway** when SmartScreen prompts
 
 ### Set as Default Editor
 
-**macOS:** right-click any `.md` file in Finder → **Open With** → choose **MarkPad**. To make it permanent, select **Always Open With** or set it in **Get Info**.
+**macOS:** right-click any `.md` file in Finder → **Open With** → choose **MarkMate**. To make it permanent, select **Always Open With** or set it in **Get Info**.
 
-**Windows:** right-click any `.md` file → **Open with** → choose **MarkPad** → **Always use this app**.
+**Windows:** right-click any `.md` file → **Open with** → choose **MarkMate** → **Always use this app**.
 
-MarkPad also natively opens `.txt` files.
+MarkMate also natively opens `.txt` files.
 
 ---
 
@@ -164,11 +164,11 @@ MarkPad also natively opens `.txt` files.
 ## 🛠 Development
 
 ```bash
-git clone https://github.com/SirKayZh/markpad.git
-cd markpad
+git clone https://github.com/SirKayZh/markmate.git
+cd markmate
 npm install
 npm start            # launch dev
-MARKPAD_DEBUG=1 npm start  # with DevTools
+MARKMATE_DEBUG=1 npm start  # with DevTools
 ```
 
 ### Build
@@ -195,21 +195,21 @@ npm run release:major  # bump major + build + commit + tag
 
 ## 🔒 Privacy
 
-MarkPad is a **local-first** editor — your documents never leave your computer.
+MarkMate is a **local-first** editor — your documents never leave your computer.
 
 - No document content is ever uploaded to any server.
 - No telemetry, no analytics, no tracking in the current version.
 - Future versions may offer **opt-in** anonymous usage stats (file type distribution, export counts, crash reports) with a clear consent dialog — you can decline or disable it at any time.
-- Full privacy policy: [sirkyzh.github.io/markpad/privacy](https://sirkyzh.github.io/markpad/privacy)
+- Full privacy policy: [sirkyzh.github.io/markmate/privacy](https://sirkyzh.github.io/markmate/privacy)
 
 ## 💬 Feedback & Community
 
-Your feedback shapes MarkPad's future:
+Your feedback shapes MarkMate's future:
 
-- 🐛 [Report a bug / Request a feature](https://github.com/SirKayZh/markpad/issues/new) (GitHub Issues)
-- 📝 [Fill out the feedback survey](https://sirkyzh.github.io/markpad/feedback) (8 questions, 2 min)
-- 💡 [Join the discussion](https://github.com/SirKayZh/markpad/discussions) (GitHub Discussions)
-- 🌐 [Visit documentation site](https://sirkyzh.github.io/markpad)
+- 🐛 [Report a bug / Request a feature](https://github.com/SirKayZh/markmate/issues/new) (GitHub Issues)
+- 📝 [Fill out the feedback survey](https://sirkyzh.github.io/markmate/feedback) (8 questions, 2 min)
+- 💡 [Join the discussion](https://github.com/SirKayZh/markmate/discussions) (GitHub Discussions)
+- 🌐 [Visit documentation site](https://sirkyzh.github.io/markmate)
 
 ---
 
@@ -228,4 +228,4 @@ Issues and PRs are welcome! Ideas for the roadmap:
 
 ## 📄 License
 
-[MIT](LICENSE) © 2026 MarkPad Contributors
+[MIT](LICENSE) © 2026 MarkMate Contributors

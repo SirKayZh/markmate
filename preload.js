@@ -11,7 +11,10 @@ function pathForFile(file) {
   return file.path || '';
 }
 
-contextBridge.exposeInMainWorld('markpad', {
+contextBridge.exposeInMainWorld('markmate', {
+  // 平台信息（供渲染层适配 macOS / Windows 差异）
+  platform: process.platform,
+
   // 主进程 -> 渲染进程
   onFileOpened: (cb) => ipcRenderer.on('file-opened', (e, data) => cb(data)),
   onFileNew: (cb) => ipcRenderer.on('file-new', () => cb()),
@@ -35,6 +38,7 @@ contextBridge.exposeInMainWorld('markpad', {
 
   // 渲染进程 -> 主进程
   saveContent: (content, saveAs) => ipcRenderer.invoke('save-content', { content, saveAs }),
+  saveTextAs: (content, defaultName, ext) => ipcRenderer.invoke('save-text-as', { content, defaultName, ext }),
   autoSave: (content) => ipcRenderer.invoke('auto-save', { content }),
   listVersions: (filePath) => ipcRenderer.invoke('list-versions', { filePath }),
   readVersion: (versionPath) => ipcRenderer.invoke('read-version', { versionPath }),
@@ -61,7 +65,9 @@ contextBridge.exposeInMainWorld('markpad', {
   rendererReady: () => ipcRenderer.send('renderer-ready'),
   setNativeTheme: (mode) => ipcRenderer.send('set-native-theme', mode),
   askCloseConfirm: () => ipcRenderer.invoke('ask-close-confirm'),
+  askChatEditsConfirm: (count) => ipcRenderer.invoke('ask-chat-edits-confirm', { count }),
   confirmCloseReply: (payload) => ipcRenderer.send('confirm-close-reply', payload),
+  confirmOverwrite: (message) => ipcRenderer.invoke('confirm-overwrite', { message }),
   saveUploadedImage: async (file) => {
     const buf = await file.arrayBuffer();
     return ipcRenderer.invoke('save-uploaded-image', {
@@ -85,7 +91,7 @@ contextBridge.exposeInMainWorld('markpad', {
   openInNewWindow: (info) => ipcRenderer.send('open-in-new-window', info),
   // 主进程 -> 渲染层：新窗口收到初始内容
   onLoadInitialTab: (cb) => ipcRenderer.on('load-initial-tab', (e, data) => cb(data)),
-  // 在 Finder 中显示文件
+  // 在文件夹中显示文件
   revealFileInFinder: (filePath) => ipcRenderer.send('reveal-file-in-finder', filePath),
   // 持久化数据：渲染进程同步到主进程 JSON 文件
   syncAppData: (key, items) => ipcRenderer.send('sync-app-data', { key, items }),

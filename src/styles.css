@@ -29,12 +29,12 @@ body.dark {
 html, body {
   height: 100%;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
   background: var(--bg);
   color: var(--text);
 }
 
-/* 顶部拖拽条：让窗口可以从这块区域拖动 */
+/* 顶部拖拽条：让窗口可以从这块区域拖动（macOS 专用，Windows 由原生标题栏接管） */
 #drag-bar {
   height: 28px;
   width: 100%;
@@ -43,6 +43,10 @@ html, body {
   flex-shrink: 0;
   position: relative;
 }
+
+/* Windows: 隐藏自定义 drag-bar，使用原生标题栏 */
+body:not([data-platform="darwin"]) #drag-bar { display: none !important; }
+body:not([data-platform="darwin"]) #app { height: calc(100vh - 36px - 26px); } /* 无需减去拖拽条 */
 
 /* 右上角按钮组共享样式 */
 #drag-bar button {
@@ -286,6 +290,30 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   overflow: visible;        /* 工具栏 tooltip 需要在容器外显示 */
   display: flex;
   min-width: 0;
+  position: relative;
+}
+
+/* 大文件加载遮罩 */
+#loading-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+#loading-overlay.show {
+  display: flex;
+}
+#loading-overlay span {
+  font-size: 14px;
+  color: var(--text-muted, #8b949e);
+  animation: loading-pulse 1.2s ease-in-out infinite;
+}
+@keyframes loading-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 /* 编辑器内容区仍需裁剪，避免溢出 */
@@ -815,6 +843,17 @@ body[data-dark="true"] #mp-theme-tip { background: rgba(245, 246, 250, 0.95); co
   display: flex; align-items: center; justify-content: center;
 }
 #find-bar button:hover { background: var(--hover); color: var(--accent); }
+/* 搜索范围切换：本页 / 全部 */
+#find-scope { display: flex; gap: 2px; background: var(--bg-soft); border-radius: 6px; padding: 2px; }
+#find-scope.hidden { display: none; }
+#find-bar button.find-scope-btn {
+  width: auto; height: 20px; padding: 0 8px;
+  font-size: 11px; border-radius: 4px; color: var(--text-muted);
+}
+#find-bar button.find-scope-btn.active {
+  background: var(--accent); color: #fff;
+}
+#find-bar button.find-scope-btn.active:hover { background: var(--accent); color: #fff; }
 mark.mp-find-mark {
   background: rgba(245, 220, 0, 0.45);
   color: inherit;
@@ -1088,10 +1127,13 @@ body.code-mode #vditor { display: none !important; }
 body.code-mode #code-editor-wrap { display: block !important; }
 body.code-mode #source-pane,
 body.code-mode #source-resizer { display: none !important; }
+/* JSON/JSONL 结构化查看模式：隐藏代码编辑区 */
+body.code-mode[data-code-lang="json"] #code-editor-wrap,
+body.code-mode[data-code-lang="jsonl"] #code-editor-wrap { display: none !important; }
 /* #source-toggle 在代码模式下不再隐藏 —— 由 renderer 设 disabled 置灰，
    保持 UI 视觉稳定（用户不会因为按钮"消失"而困惑） */
 
-/* ── Prism 语法高亮 Token 颜色（适配 MarkPad 亮 / 暗主题） ── */
+/* ── Prism 语法高亮 Token 颜色（适配 MarkMate 亮 / 暗主题） ── */
 
 /* 注释（XML 注释等） */
 .token.comment,
@@ -1195,6 +1237,23 @@ body.dark .token.important,
 body.dark .token.variable {
   color: #e06c75;
 }
+
+/* JSON 专属增强配色（VS Code 风格，更鲜明的区分）— 用 Prism 的 language-json class 作用域 */
+#code-highlight code.language-json .token.property { color: #0451a5; font-weight: 500; }   /* key 蓝 */
+#code-highlight code.language-json .token.string { color: #0a7d33; }                          /* string 绿 */
+#code-highlight code.language-json .token.number { color: #098658; }                          /* number 青绿 */
+#code-highlight code.language-json .token.boolean { color: #0000ff; font-weight: 500; }       /* bool 蓝 */
+#code-highlight code.language-json .token.null,
+#code-highlight code.language-json .token.keyword { color: #a31515; font-weight: 500; }       /* null 红 */
+#code-highlight code.language-json .token.punctuation { color: #555; }
+/* 暗色主题下 JSON 配色 */
+body.dark #code-highlight code.language-json .token.property { color: #9cdcfe; }
+body.dark #code-highlight code.language-json .token.string { color: #ce9178; }
+body.dark #code-highlight code.language-json .token.number { color: #b5cea8; }
+body.dark #code-highlight code.language-json .token.boolean { color: #569cd6; }
+body.dark #code-highlight code.language-json .token.null,
+body.dark #code-highlight code.language-json .token.keyword { color: #569cd6; }
+body.dark #code-highlight code.language-json .token.punctuation { color: #d4d4d4; }
 
 /* ============ Tab 栏 ============ */
 #tab-bar {
@@ -1395,3 +1454,350 @@ body.dark .token.variable {
 .link-dialog-actions button:hover { background: var(--hover); }
 .link-dialog-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .link-dialog-actions button.primary:hover { opacity: 0.9; }
+
+/* ============ JSON 结构化查看器 ============ */
+
+#json-viewer-wrap {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── 工具栏 ── */
+#json-viewer-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px; border-bottom: 1px solid var(--border);
+  background: var(--bg-soft); flex-shrink: 0; gap: 8px;
+  flex-wrap: wrap; min-height: 36px;
+}
+.json-toolbar-left { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.json-toolbar-right { display: flex; align-items: center; gap: 8px; }
+.json-toolbar-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+.json-view-btn, #json-collapse-all, #json-expand-all, #json-stats-toggle, #json-filter-toggle {
+  padding: 4px 10px; font-size: 12px; border: 1px solid var(--border);
+  border-radius: 5px; background: var(--bg); color: var(--text-muted);
+  cursor: pointer; white-space: nowrap; transition: all 0.15s;
+}
+.json-view-btn:hover, #json-collapse-all:hover, #json-expand-all:hover, #json-stats-toggle:hover, #json-filter-toggle:hover {
+  background: var(--hover); color: var(--text);
+}
+.json-view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+#json-node-count { font-size: 11px; color: var(--text-muted); }
+
+/* ── 视图内容区 ── */
+.json-view-content {
+  flex: 1; overflow: auto; padding: 8px 0;
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.6;
+}
+
+/* ── 树节点 ── */
+.json-node { user-select: text; }
+.json-line {
+  display: flex; align-items: baseline; padding: 1px 8px 1px 0;
+  border-radius: 3px; white-space: nowrap; min-height: 20px;
+  cursor: default; min-width: 0;
+}
+.json-line:hover { background: var(--hover); }
+
+.json-toggle, .json-toggle-spacer {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; flex-shrink: 0; font-size: 10px;
+  cursor: pointer; color: var(--text-muted); margin-right: 2px;
+  border-radius: 3px; transition: transform 0.12s;
+}
+.json-toggle:hover { background: var(--hover); color: var(--text); }
+.json-toggle-spacer { cursor: default; }
+
+.json-key { color: var(--json-key, #0451a5); margin-right: 0; flex-shrink: 0; }
+.json-colon { color: var(--text-muted); flex-shrink: 0; }
+.json-bracket { color: var(--text-muted); font-size: 11px; flex-shrink: 0; }
+
+/* 叶节点值：超宽时 CSS 自动截断(…)，与"展开"按钮双保险，彻底杜绝横向溢出。
+   flex:0 1 auto → 短值占自然宽、长值收缩并显示省略号；其余元素 flex-shrink:0 不被压。 */
+.json-value {
+  min-width: 0; flex: 0 1 auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 值类型颜色 */
+.json-type-string { color: var(--json-string, #0a8); }
+.json-type-number { color: var(--json-number, #0984e3); }
+.json-type-boolean { color: var(--json-boolean, #a855f7); }
+.json-type-null { color: var(--json-null, #999); }
+
+/* 类型标签徽章 */
+.json-type-tag {
+  display: inline-block; font-size: 9px; padding: 0 4px; margin-left: 6px;
+  border-radius: 3px; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 500; line-height: 15px; vertical-align: middle;
+  opacity: 0; transition: opacity 0.12s; flex-shrink: 0;
+}
+.json-line:hover .json-type-tag { opacity: 1; }
+/* 始终对容器节点显示 */
+.json-line:hover .json-tag-array, .json-line:hover .json-tag-object,
+.json-line .json-tag-array, .json-line .json-tag-object { opacity: 0.75; }
+
+.json-tag-string  { background: rgba(0, 170, 136, 0.12); color: #0a8; }
+.json-tag-number  { background: rgba(9, 132, 227, 0.12); color: #0984e3; }
+.json-tag-boolean { background: rgba(168, 85, 247, 0.12); color: #a855f7; }
+.json-tag-null    { background: rgba(153, 153, 153, 0.12); color: #999; }
+.json-tag-array   { background: rgba(253, 126, 20, 0.12); color: #fd7e14; }
+.json-tag-object  { background: rgba(0, 180, 216, 0.12); color: #00b4d8; }
+
+/* 折叠/展开 */
+.json-children { overflow: hidden; transition: max-height 0.2s ease; }
+.json-children.collapsed { display: none; }
+.json-circular {
+  font-size: 11px; color: var(--text-muted); font-style: italic;
+  padding: 2px 0;
+}
+.json-more {
+  font-size: 12px; color: var(--accent); cursor: pointer;
+  padding: 3px 0; user-select: none;
+}
+.json-more:hover { text-decoration: underline; }
+
+/* 长字符串展开/收起 */
+.json-str-toggle {
+  font-size: 11px; color: var(--accent); cursor: pointer;
+  margin-left: 8px; user-select: none; white-space: nowrap;
+  padding: 0 4px; border-radius: 3px; flex-shrink: 0;
+}
+.json-str-toggle:hover { background: var(--hover); text-decoration: underline; }
+.json-str-full {
+  white-space: pre-wrap; word-break: break-word;
+  font-size: 12.5px; line-height: 1.6; color: var(--json-string, #0a8);
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; margin: 4px 0 4px;
+  max-height: 50vh; overflow: auto;
+  user-select: text;
+}
+.json-str-full.collapsed { display: none; }
+
+/* ── 统计面板 ── */
+#json-stats-panel {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg-soft); flex-shrink: 0;
+}
+.json-stats-grid {
+  display: flex; flex-wrap: wrap; gap: 16px;
+}
+.json-stat-item {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.json-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.json-stat-value { font-size: 15px; font-weight: 600; color: var(--text); }
+
+/* ── 聊天气泡 ── */
+#json-chat-container {
+  padding: 12px 16px; display: flex; flex-direction: column; gap: 16px;
+}
+
+.json-chat-entry {
+  border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; background: var(--bg-soft);
+  flex-shrink: 0;  /* 防止 flex column 把卡片压扁成横线 */
+}
+.json-chat-entry-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px; background: var(--bg); border-bottom: 1px solid var(--border);
+  font-size: 11px; color: var(--text-muted);
+  cursor: pointer; user-select: none;
+}
+.json-chat-entry-header:hover { background: var(--hover); }
+.json-chat-entry-headleft { display: flex; align-items: center; gap: 6px; }
+.json-chat-caret { font-size: 9px; color: var(--text-muted); width: 10px; display: inline-block; transition: transform 0.12s; }
+.json-chat-entry-body { overflow: hidden; }
+.json-chat-entry.collapsed .json-chat-entry-body { display: none; }
+.json-chat-entry.collapsed .json-chat-entry-header { border-bottom: none; }
+.json-chat-entry-number { font-weight: 600; }
+.json-chat-entry-tokens { font-family: monospace; }
+
+.json-chat-msg {
+  display: flex; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.json-chat-msg:last-child { border-bottom: none; }
+
+.json-chat-role {
+  flex-shrink: 0; width: 64px; font-size: 10px; font-weight: 600;
+  text-align: center; padding: 2px 4px; border-radius: 4px;
+  align-self: flex-start; margin-top: 2px;
+  word-break: break-word; line-height: 1.3;
+}
+.json-chat-role.role-human, .json-chat-role.role-user,
+.json-chat-role.role-instruction { background: rgba(9, 132, 227, 0.12); color: #0984e3; }
+.json-chat-role.role-gpt, .json-chat-role.role-assistant,
+.json-chat-role.role-output { background: rgba(0, 170, 136, 0.12); color: #0a8; }
+.json-chat-role.role-system, .json-chat-role.role-input { background: rgba(153, 153, 153, 0.12); color: #888; }
+.json-chat-role.role-tool, .json-chat-role.role-function { background: rgba(253, 126, 20, 0.14); color: #d9730d; }
+
+.json-chat-text {
+  flex: 1; font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+  word-break: break-word; min-width: 0;
+}
+
+/* ── 对话视图：可编辑标注 ── */
+.json-chat-text.editable {
+  border: 1px solid transparent; border-radius: 6px;
+  padding: 4px 8px; margin: -4px -2px;
+  transition: background 0.12s, border-color 0.12s;
+  cursor: text; outline: none;
+}
+.json-chat-text.editable:hover { background: var(--hover); border-color: var(--border); }
+.json-chat-text.editable:focus {
+  background: var(--bg); border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(9, 132, 227, 0.18);
+}
+/* 已改标记 */
+.json-chat-edited-badge {
+  display: none; font-size: 9px; font-weight: 600; color: #b8860b;
+  background: rgba(255, 196, 0, 0.16); border: 1px solid rgba(255, 196, 0, 0.4);
+  border-radius: 4px; padding: 0 5px; line-height: 14px;
+}
+.json-chat-entry.edited .json-chat-edited-badge { display: inline-block; }
+.json-chat-entry.edited { border-color: rgba(255, 196, 0, 0.55); }
+.json-chat-entry.edited .json-chat-entry-header { background: rgba(255, 196, 0, 0.08); }
+/* 保存失败高亮 */
+.json-chat-entry.save-failed {
+  border-color: #e74c3c !important;
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.3);
+  animation: chatFailFlash 0.9s ease 2;
+}
+@keyframes chatFailFlash {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.25); }
+  50% { box-shadow: 0 0 0 4px rgba(231, 76, 60, 0.55); }
+}
+
+/* 对话标注保存 / 放弃按钮（工具栏右侧） */
+#chat-save-btn, #chat-discard-btn, #chat-save-next-btn {
+  padding: 3px 10px; font-size: 12px; border: 1px solid var(--border);
+  border-radius: 5px; background: var(--bg); color: var(--text); cursor: pointer;
+  margin-left: 8px;
+}
+#chat-save-btn:not(:disabled) {
+  border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
+#chat-save-btn:disabled, #chat-save-next-btn:disabled { opacity: 0.45; cursor: default; }
+#chat-save-btn:not(:disabled):hover { background: rgba(9, 132, 227, 0.1); }
+#chat-save-next-btn:not(:disabled):hover { background: var(--hover); }
+#chat-discard-btn:hover { background: var(--hover); }
+
+/* ── JSONL 分页器 ── */
+#jsonl-pager {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 8px 16px; border-top: 1px solid var(--border);
+  background: var(--bg-soft); flex-shrink: 0;
+}
+#jsonl-pager button {
+  padding: 4px 12px; font-size: 12px; border: 1px solid var(--border);
+  border-radius: 5px; background: var(--bg); color: var(--text);
+  cursor: pointer;
+}
+#jsonl-pager button:disabled { opacity: 0.4; cursor: default; }
+#jsonl-pager button:not(:disabled):hover { background: var(--hover); }
+#jsonl-page-info { font-size: 12px; color: var(--text-muted); }
+.jsonl-jump-wrap { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+#jsonl-jump-input {
+  width: 56px; padding: 3px 6px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); color: var(--text);
+}
+
+/* 导出按钮（工具栏右侧） */
+#jsonl-export-btn {
+  padding: 3px 10px; font-size: 12px; border: 1px solid var(--border);
+  border-radius: 5px; background: var(--bg); color: var(--text); cursor: pointer;
+  margin-left: 8px;
+}
+#jsonl-export-btn:hover { background: var(--hover); color: var(--accent); }
+
+/* 筛选栏 */
+#json-filter-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg-soft); flex-shrink: 0;
+}
+#json-filter-bar select, #json-filter-bar input {
+  padding: 4px 8px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg); color: var(--text);
+}
+#json-filter-value { flex: 1; min-width: 120px; max-width: 280px; }
+#json-filter-bar button {
+  padding: 4px 12px; font-size: 12px; border: 1px solid var(--border);
+  border-radius: 5px; background: var(--bg); color: var(--text); cursor: pointer;
+}
+#json-filter-bar button:hover { background: var(--hover); color: var(--accent); }
+#json-filter-status { font-size: 12px; color: var(--text-muted); }
+#json-filter-toggle.active { background: var(--accent); color: #fff; }
+
+/* JSON 解析错误提示条 */
+#json-error-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px; flex-shrink: 0;
+  font-size: 13px; line-height: 1.4;
+  color: #b3261e;
+  background: #fdeceb;
+  border-bottom: 1px solid #f3c2bd;
+}
+#json-error-bar .json-error-msg { flex: 1; word-break: break-word; }
+#json-error-bar .json-error-jump {
+  flex-shrink: 0; padding: 3px 12px; font-size: 12px;
+  border: 1px solid #e0a59f; border-radius: 5px;
+  background: #fff; color: #b3261e; cursor: pointer;
+}
+#json-error-bar .json-error-jump:hover { background: #b3261e; color: #fff; border-color: #b3261e; }
+body.dark #json-error-bar {
+  color: #ff9b93; background: #3a1f1d; border-bottom-color: #5c2b27;
+}
+body.dark #json-error-bar .json-error-jump {
+  background: #2a1614; color: #ff9b93; border-color: #6e3530;
+}
+body.dark #json-error-bar .json-error-jump:hover { background: #ff9b93; color: #2a1614; }
+
+/* Raw 视图下工具栏保持在顶部 */
+#json-viewer-wrap.raw-mode {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;  /* 让下方 code-editor 可交互，仅 toolbar 接收事件 */
+  background: transparent;
+}
+#json-viewer-wrap.raw-mode #json-viewer-toolbar {
+  pointer-events: auto;
+  z-index: 10;
+  position: relative;
+}
+#json-viewer-wrap.raw-mode #json-tree-container,
+#json-viewer-wrap.raw-mode #json-chat-container,
+#json-viewer-wrap.raw-mode #json-stats-panel { display: none !important; }
+#json-viewer-wrap.raw-mode #jsonl-pager {
+  pointer-events: auto;
+  z-index: 10;
+  position: relative;
+  margin-top: auto;
+}
+#json-viewer-wrap.raw-mode .json-toolbar-left .json-toolbar-sep,
+#json-viewer-wrap.raw-mode .json-toolbar-left #json-collapse-all,
+#json-viewer-wrap.raw-mode .json-toolbar-left #json-expand-all,
+#json-viewer-wrap.raw-mode .json-toolbar-left #json-stats-toggle,
+#json-viewer-wrap.raw-mode .json-toolbar-left #json-filter-toggle { display: none; }
+/* raw 模式下筛选栏隐藏（筛选只在 tree/chat 有意义） */
+#json-viewer-wrap.raw-mode #json-filter-bar { display: none !important; }
+/* 解析错误提示在 raw 模式下要保持可见且可点击（解析失败会回退 raw） */
+#json-viewer-wrap.raw-mode #json-error-bar {
+  pointer-events: auto;
+  z-index: 10;
+  position: relative;
+}
+/* raw 模式下 code-editor 要在 toolbar 下方留出空间 */
+body.code-mode #json-viewer-wrap.raw-mode ~ #code-editor-wrap,
+#editor-wrap:has(#json-viewer-wrap.raw-mode) #code-editor-wrap {
+  top: 37px;  /* 让出 toolbar 高度 */
+}

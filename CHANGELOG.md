@@ -9,6 +9,38 @@
 
 ---
 
+## [2.0.0] - 2026-07-02
+
+### 新增 Added
+- **支持 OpenAI Messages 格式数据集对话视图**：现可识别 `{"messages":[{"role","content"}]}` 这一业界通用的微调/标注格式（OpenAI fine-tuning、vLLM 等），自动进入对话气泡视图，按 `system / user / assistant / tool` 角色着色展示，并支持点选编辑、统计（轮次/角色分布/Token）。此前只支持 Alpaca 与 ShareGPT，messages 格式会退化成树形且被截断看不全。
+  - `content` 为多模态数组（`[{type:"text",...},{type:"image_url",...}]`）时只读展示，图片部分以 `[图片]` 占位。
+- **JSON 解析错误定位**：打开格式错误的 `.json` 文件时，顶部显示醒目错误条，标出具体**出错行号、列号**与原因（如「第 3 行，第 10 列：Unexpected token」），并提供「定位」按钮一键跳转到原始视图的出错位置。此前解析失败会静默回退到原始文本、不给任何提示，体验上像 bug。
+- **对话视图标注编辑 + 批量保存**：JSONL 数据集的「对话视图」气泡现在可直接点选编辑（Alpaca 指令/输入/输出、ShareGPT 各轮 value）。支持一次改多条、攒成待保存集合，顶栏「💾 保存 (N)」一键整文件回写；「↩ 放弃」可撤销全部未保存修改。已改条目带黄色「已改」标记，保存失败条目红框高亮并自动滚动定位。
+  - 编辑以全量行下标为键缓存，翻页/筛选往返不丢；保存按行下标精确回写整文件，从根本上避免多页 JSONL「当前页覆盖整文件」的数据丢失。
+  - ⌘S 在对话视图自动改走标注回写逻辑；关窗时未保存标注会触发确认。
+- **保存并下一页**：多页 JSONL 对话视图新增「保存并下一页 ▶」按钮，标完一页一键存盘并自动跳到下一页继续标注；无改动时退化为纯翻页，末页自动禁用。
+  - 切换标签页时若当前对话视图有未保存标注，弹三态确认（保存/放弃/取消），避免标注丢失。
+
+### 优化 Performance
+- **大 JSON 异步解析**：打开超过 512KB 的 `.json` 文件时，解析改在后台 Web Worker 进行，不再阻塞主线程，避免大文件打开瞬间的 UI 冻结。快速切换标签页时会丢弃过期解析结果，不会用旧文件内容覆盖当前视图。
+
+### 修复 Fixed
+- **树形视图长字符串看不全也滚不动**：JSON/JSONL 树形视图中超过 200 字的字符串值此前被硬截断为 `…`、无法查看完整内容（大 `content` 字段尤其明显）。现在长字符串旁出现「展开（N 字）」按钮，点击在下方完整展开全文（可换行、可滚动，最高占半屏），再次点击收起。
+- **Windows 平台多项适配修复**（P0~P3，共 12 项）：
+  - 🔴 **双标题栏**：`titleBarStyle: hiddenInset` 在 Windows 上失效，改为平台判断 + CSS 隐藏自定义 drag-bar。
+  - 🟠 **长文档 PNG 导出截断**：`enableLargerThanScreen` 仅 macOS 有效，Windows 上改为逐级降低 zoom 适配。
+  - 🟠 **菜单/按钮文案**：「在 Finder 中显示」改为平台感知（Windows 显示「在文件夹中显示」）。
+  - 🟠 **快捷键提示全显示 ⌘**：preload 暴露 `platform`，renderer 动态生成 `Ctrl+` 文案。
+  - 🟠 **正文字体**：font-family 加 `Segoe UI` / `Microsoft YaHei`，Windows 上不再回退到 sans-serif。
+  - 🟡 **package.json description**：`for macOS` → `for macOS & Windows`。
+  - 🟡 **欢迎页快捷键表**：表格快捷键平台适配。
+  - 🔵 **`second-instance` 处理**：注册 `app.requestSingleInstanceLock()`，防多实例启动。
+  - 🔵 **`open-file` 安全守卫**：已有 `app.isReady()` 判断（经审查，无 race condition）。
+- **JSONL 格式化读取旧文件内容**（Batch4 C06 预存 Bug）：在 JSONL 的树或对话视图下按格式化快捷键（⌥⌘L），`codeEditor.value` 仍存留上一个代码文件（如 XML）的旧内容，导致格式化用错源数据。现在进入格式化前先用 `jsonlEntries` 重新填充 `codeEditor`，确保源数据正确。
+- 对话视图有未保存标注编辑时点「导出」，导出内容现在包含这些未保存修改（所见即所得），此前会导出旧内容。
+
+---
+
 ## [1.6.1] - 2026-06-19
 
 ### 优化 Performance
@@ -49,7 +81,7 @@
   - 采用 textarea + pre overlay 架构：高亮层在下铺底展示着色，输入层透明覆盖在上方接收键盘，无需替换为 contenteditable。
   - 字符串（绿）、数字（橙）、关键字（紫）、标签/键（蓝）、注释（灰斜体），双主题独立配色。
   - 编辑 / 格式化 / 滚动时实时刷新高亮，体验流畅。
-- **📂 支持打开 xml / json / jsonl / yml / yaml 文件**：MarkPad 现可作为轻量代码/配置文件查看器使用。
+- **📂 支持打开 xml / json / jsonl / yml / yaml 文件**：MarkMate 现可作为轻量代码/配置文件查看器使用。
   - **专用 textarea 编辑区**：代码模式不走 vditor，避免大型文件触发 IR 模式增量解析爆炸。
   - **一键格式化**：JSON / JSONL / XML 支持原生格式化（⌥⌘L 或顶部工具栏「格式化」按钮）。
   - **状态栏自适应**：右下角显示文件类型徽标（JSON/XML/YAML）；字数统计切换为"字符数"。
@@ -74,7 +106,7 @@
 ## [1.4.1] - 2026-06-13
 
 ### 新增 Added
-- **🪟 Windows 支持**：MarkPad 现在可在 Windows x64 上运行。
+- **🪟 Windows 支持**：MarkMate 现在可在 Windows x64 上运行。
   - 两种分发格式：`-setup.exe`（NSIS 安装版，可选安装路径、桌面快捷方式）和 `-portable.exe`（免安装即用）。
   - 在 macOS 上交叉编译，electron-builder 自动下载 Wine + NSIS，无需本机安装 Windows。
   - 文件关联：`.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt`。
@@ -181,7 +213,7 @@
 
 ### 新增 Added
 - **拖拽打开文件**：拖 `.md` 到窗口（显示遮罩提示）、拖到 Dock 图标、Finder 双击、冷启动拖入均支持。
-- **文件关联**：可在 Finder「打开方式」选择 MarkPad 打开 `.md` / `.markdown` / `.mdown` / `.mkd` / `.mdtext` / `.txt`，支持设为默认编辑器。
+- **文件关联**：可在 Finder「打开方式」选择 MarkMate 打开 `.md` / `.markdown` / `.mdown` / `.mkd` / `.mdtext` / `.txt`，支持设为默认编辑器。
 - **三态主题**：亮色 / 暗色 / 跟随系统，⌘/ 循环切换，偏好持久化，跟随系统时实时响应深浅色变化。
 
 ### 修复 Fixed

@@ -20,8 +20,8 @@ body:
     id: solution
     attributes:
       label: Proposed Solution / 建议方案
-      description: Describe what you'd like to see in MarkPad.
-      placeholder: "It would be great if MarkPad could..."
+      description: Describe what you'd like to see in MarkMate.
+      placeholder: "It would be great if MarkMate could..."
     validations:
       required: true
   - type: textarea

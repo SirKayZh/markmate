@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# build-dmg.sh — 可靠地把 MarkPad 打包成带版本号的 macOS DMG（arm64 + x64）
+# build-dmg.sh — 可靠地把 MarkMate 打包成带版本号的 macOS DMG（arm64 + x64）
 #
 # 为什么不直接用 electron-builder 出 DMG：
-#   本机自动化环境下 `hdiutil create` 需要把卷临时挂载到 /Volumes/MarkPad，
+#   本机自动化环境下 `hdiutil create` 需要把卷临时挂载到 /Volumes/MarkMate，
 #   会被 macOS TCC 权限拦截（操作不被允许）。这里改成：
 #   1) electron-builder 只构建 .app（--dir，不碰 hdiutil）
 #   2) hdiutil makehybrid 生成镜像（不挂载卷）
 #   3) hdiutil convert 转成压缩只读 UDZO（体积正常、可分发）
 #
 # 用法：bash scripts/build-dmg.sh
-# 产物：release/MarkPad-<version>-arm64.dmg / release/MarkPad-<version>-x64.dmg
+# 产物：release/MarkMate-<version>-arm64.dmg / release/MarkMate-<version>-x64.dmg
 
 set -euo pipefail
 

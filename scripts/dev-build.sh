@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="$(node -p "require('./package.json').version")"
-echo "==> 本地构建 MarkPad v${VERSION}（dev build，不 bump 版本）"
+echo "==> 本地构建 MarkMate v${VERSION}（dev build，不 bump 版本）"
 
 bash scripts/build-dmg.sh
 

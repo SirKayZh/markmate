@@ -11,8 +11,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: MarkPad Version / 版本
-      description: Which version of MarkPad are you using? (Help → About)
+      label: MarkMate Version / 版本
+      description: Which version of MarkMate are you using? (Help → About)
       placeholder: "e.g. 1.6.1"
     validations:
       required: true

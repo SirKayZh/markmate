@@ -1,4 +1,4 @@
-# MarkPad ⚡
+# MarkMate ⚡
 
 > **免费开源的 Typora 替代品。** 一款轻快专注的 WYSIWYG Markdown 编辑器，macOS & Windows 双平台。所见即所得 + 大纲导航 + 永不丢稿。还能直接查看 JSON/YAML/XML/JSONL，带语法高亮。
 >
@@ -9,23 +9,23 @@
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![release](https://img.shields.io/badge/release-v1.6.1-3b82f6)
 
-[English](README.md) · **简体中文** · [🌐 文档站](https://sirkyzh.github.io/markpad)
+[English](README.md) · **简体中文** · [🌐 文档站](https://sirkyzh.github.io/markmate)
 
 <p align="center">
-  <img src="build/preview-icon.png" width="128" alt="MarkPad icon">
+  <img src="build/preview-icon.png" width="128" alt="MarkMate icon">
 </p>
 
 <p align="center">
-  <a href="https://github.com/SirKayZh/markpad/releases"><img src="https://img.shields.io/badge/⬇️_下载最新版-3b82f6?style=for-the-badge" alt="下载"></a>
+  <a href="https://github.com/SirKayZh/markmate/releases"><img src="https://img.shields.io/badge/⬇️_下载最新版-3b82f6?style=for-the-badge" alt="下载"></a>
   &nbsp;
-  <a href="https://github.com/SirKayZh/markpad/issues/new"><img src="https://img.shields.io/badge/🐛_报告_Bug-gray?style=for-the-badge" alt="报告 Bug"></a>
+  <a href="https://github.com/SirKayZh/markmate/issues/new"><img src="https://img.shields.io/badge/🐛_报告_Bug-gray?style=for-the-badge" alt="报告 Bug"></a>
   &nbsp;
-  <a href="https://sirkyzh.github.io/markpad/feedback"><img src="https://img.shields.io/badge/📝_反馈问卷-gray?style=for-the-badge" alt="反馈"></a>
+  <a href="https://sirkyzh.github.io/markmate/feedback"><img src="https://img.shields.io/badge/📝_反馈问卷-gray?style=for-the-badge" alt="反馈"></a>
 </p>
 
 ---
 
-> 📸 **截图即将上线** — 我们正在准备高质量界面截图。在此之前，可以查看下方[功能列表](#-功能特性)或[直接下载试用](https://github.com/SirKayZh/markpad/releases)。
+> 📸 **截图即将上线** — 我们正在准备高质量界面截图。在此之前，可以查看下方[功能列表](#-功能特性)或[直接下载试用](https://github.com/SirKayZh/markmate/releases)。
 
 ---
 
@@ -69,7 +69,7 @@
 
 ### 💻 轻量代码/配置文件查看器（v1.5.0+）
 
-- **JSON / XML / YAML / JSONL** — 直接在 MarkPad 中打开这些文件，作为轻量查看器和编辑器使用
+- **JSON / XML / YAML / JSONL** — 直接在 MarkMate 中打开这些文件，作为轻量查看器和编辑器使用
 - **语法高亮** — Prism.js 提供着色，亮/暗双主题独立配色
 - **一键格式化** — ⌥⌘L 美化 JSON/JSONL/XML 缩进；工具栏专用按钮，不可用时自动置灰并显示中文提示
 - **文件类型图标** — 侧栏按格式显示不同 emoji 徽标（📝 .md · 📊 .json · 📋 .xml · ⚙️ .yml/.yaml）
@@ -95,9 +95,9 @@
 
 ---
 
-## 🤔 为什么选 MarkPad？
+## 🤔 为什么选 MarkMate？
 
-| | **MarkPad** | **Typora** | **VS Code** |
+| | **MarkMate** | **Typora** | **VS Code** |
 |---|:---:|:---:|:---:|
 | **价格** | ✅ 免费开源 | ❌ $14.99 | ✅ 免费 |
 | **所见即所得编辑** | ✅ 即时渲染 | ✅ 即时渲染 | ❌ 预览分离 |
@@ -114,29 +114,29 @@
 
 ## 📦 安装
 
-从 [Releases](https://github.com/SirKayZh/markpad/releases) 页面下载最新版本：
+从 [Releases](https://github.com/SirKayZh/markmate/releases) 页面下载最新版本：
 
 **macOS：**
-- Apple 芯片（M1/M2/M3/M4…）：`MarkPad-1.6.1-arm64.dmg`
-- Intel：`MarkPad-1.6.1-x64.dmg`
+- Apple 芯片（M1/M2/M3/M4…）：`MarkMate-1.6.1-arm64.dmg`
+- Intel：`MarkMate-1.6.1-x64.dmg`
 
 **Windows：**
-- `MarkPad-1.6.1-x64-setup.exe` — 安装版（推荐）
-- `MarkPad-1.6.1-x64-portable.exe` — 便携版，解压即用
+- `MarkMate-1.6.1-x64-setup.exe` — 安装版（推荐）
+- `MarkMate-1.6.1-x64-portable.exe` — 便携版，解压即用
 
 > 两个平台的应用均**未经过代码签名/公证**。
 >
-> **macOS**：右键点击应用 → **打开**，或运行 `xattr -cr /Applications/MarkPad.app`
+> **macOS**：右键点击应用 → **打开**，或运行 `xattr -cr /Applications/MarkMate.app`
 >
 > **Windows**：SmartScreen 弹出时点击 **更多信息** → **仍要运行**
 
 ### 设为默认编辑器
 
-**macOS**：在 Finder 中右键任意 `.md` 文件 → **打开方式** → 选择 **MarkPad**；若想长期生效，选择 **始终以此方式打开** 或在「显示简介」中设置默认应用。
+**macOS**：在 Finder 中右键任意 `.md` 文件 → **打开方式** → 选择 **MarkMate**；若想长期生效，选择 **始终以此方式打开** 或在「显示简介」中设置默认应用。
 
-**Windows**：右键任意 `.md` 文件 → **打开方式** → 选择 **MarkPad** → **始终使用此应用**。
+**Windows**：右键任意 `.md` 文件 → **打开方式** → 选择 **MarkMate** → **始终使用此应用**。
 
-MarkPad 也可直接打开 `.txt` 文件。
+MarkMate 也可直接打开 `.txt` 文件。
 
 ---
 
@@ -164,11 +164,11 @@ MarkPad 也可直接打开 `.txt` 文件。
 ## 🛠 开发
 
 ```bash
-git clone https://github.com/SirKayZh/markpad.git
-cd markpad
+git clone https://github.com/SirKayZh/markmate.git
+cd markmate
 npm install
 npm start            # 启动开发
-MARKPAD_DEBUG=1 npm start  # 启动并打开 DevTools
+MARKMATE_DEBUG=1 npm start  # 启动并打开 DevTools
 ```
 
 ### 打包
@@ -195,21 +195,21 @@ npm run release:major  # 破坏性改动
 
 ## 🔒 隐私保护
 
-MarkPad 是一款**本地优先**的编辑器 —— 你的文档永远不会离开你的电脑。
+MarkMate 是一款**本地优先**的编辑器 —— 你的文档永远不会离开你的电脑。
 
 - 绝不收集、不上传、不存储任何文档内容。
 - 当前版本无埋点、无分析、无追踪。
 - 未来版本可能会在**明确征得你同意**的情况下，匿名上报聚合使用数据（文件类型分布、导出次数、崩溃报告），首次启动时弹窗说明，可随时拒绝或关闭。
-- 完整隐私政策：[sirkyzh.github.io/markpad/privacy](https://sirkyzh.github.io/markpad/privacy)
+- 完整隐私政策：[sirkyzh.github.io/markmate/privacy](https://sirkyzh.github.io/markmate/privacy)
 
 ## 💬 反馈与交流
 
-你的意见直接影响 MarkPad 的产品方向：
+你的意见直接影响 MarkMate 的产品方向：
 
-- 🐛 [提交 Bug / 功能建议](https://github.com/SirKayZh/markpad/issues/new)（GitHub Issues）
-- 📝 [填写反馈问卷](https://sirkyzh.github.io/markpad/feedback)（8 道题，2 分钟）
-- 💡 [参与功能讨论](https://github.com/SirKayZh/markpad/discussions)（GitHub Discussions）
-- 🌐 [访问文档站点](https://sirkyzh.github.io/markpad)
+- 🐛 [提交 Bug / 功能建议](https://github.com/SirKayZh/markmate/issues/new)（GitHub Issues）
+- 📝 [填写反馈问卷](https://sirkyzh.github.io/markmate/feedback)（8 道题，2 分钟）
+- 💡 [参与功能讨论](https://github.com/SirKayZh/markmate/discussions)（GitHub Discussions）
+- 🌐 [访问文档站点](https://sirkyzh.github.io/markmate)
 
 ---
 
@@ -228,4 +228,4 @@ MarkPad 是一款**本地优先**的编辑器 —— 你的文档永远不会离
 
 ## 📄 许可证
 
-[MIT](LICENSE) © 2026 MarkPad Contributors
+[MIT](LICENSE) © 2026 MarkMate Contributors

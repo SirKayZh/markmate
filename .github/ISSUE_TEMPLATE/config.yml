@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: 💬 Discussions
-    url: https://github.com/SirKayZh/markpad/discussions
+    url: https://github.com/SirKayZh/markmate/discussions
     about: Ask questions, share ideas, and discuss with the community
   - name: 📝 Feedback Survey
-    url: https://sirkyzh.github.io/markpad/feedback
+    url: https://sirkyzh.github.io/markmate/feedback
     about: Fill out our 8-question feedback survey (2 minutes)
   - name: 🌐 Documentation
-    url: https://sirkyzh.github.io/markpad
-    about: Visit the MarkPad documentation site
+    url: https://sirkyzh.github.io/markmate
+    about: Visit the MarkMate documentation site
