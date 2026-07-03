@@ -1,16 +1,31 @@
 # MarkPad ⚡
 
-> 一款轻快专注的 **macOS / Windows** Markdown 编辑器 — 所见即所得 + 强大导航 + 永不丢稿。
+> **免费开源的 Typora 替代品。** 一款轻快专注的 WYSIWYG Markdown 编辑器，macOS & Windows 双平台。所见即所得 + 大纲导航 + 永不丢稿。还能直接查看 JSON/YAML/XML/JSONL，带语法高亮。
+>
+> **The free, open-source Typora alternative.** A lightning-fast WYSIWYG Markdown editor for macOS & Windows — write in peace, navigate with ease, never lose your work.
 
 ![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows-blue)
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
+![release](https://img.shields.io/badge/release-v1.6.1-3b82f6)
 
-[English](README.md) · **简体中文**
+[English](README.md) · **简体中文** · [🌐 文档站](https://sirkyzh.github.io/markpad)
 
 <p align="center">
   <img src="build/preview-icon.png" width="128" alt="MarkPad icon">
 </p>
+
+<p align="center">
+  <a href="https://github.com/SirKayZh/markpad/releases"><img src="https://img.shields.io/badge/⬇️_下载最新版-3b82f6?style=for-the-badge" alt="下载"></a>
+  &nbsp;
+  <a href="https://github.com/SirKayZh/markpad/issues/new"><img src="https://img.shields.io/badge/🐛_报告_Bug-gray?style=for-the-badge" alt="报告 Bug"></a>
+  &nbsp;
+  <a href="https://sirkyzh.github.io/markpad/feedback"><img src="https://img.shields.io/badge/📝_反馈问卷-gray?style=for-the-badge" alt="反馈"></a>
+</p>
+
+---
+
+> 📸 **截图即将上线** — 我们正在准备高质量界面截图。在此之前，可以查看下方[功能列表](#-功能特性)或[直接下载试用](https://github.com/SirKayZh/markpad/releases)。
 
 ---
 
@@ -75,6 +90,25 @@
 - **文件关联**：已注册 `.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt` `.xml` `.json` `.jsonl` `.yml` `.yaml` 的处理程序，可在 Finder 中设为默认编辑器
 - **原生体验**：内嵌红绿灯按钮、文档修改标记、最近打开菜单、状态栏字数统计
 - **隐私友好**：首次打开 md 文件不会触发 macOS「允许访问桌面」权限弹窗
+
+---
+
+---
+
+## 🤔 为什么选 MarkPad？
+
+| | **MarkPad** | **Typora** | **VS Code** |
+|---|:---:|:---:|:---:|
+| **价格** | ✅ 免费开源 | ❌ $14.99 | ✅ 免费 |
+| **所见即所得编辑** | ✅ 即时渲染 | ✅ 即时渲染 | ❌ 预览分离 |
+| **macOS + Windows** | ✅ 双平台 | ✅ 双平台 | ✅ 双平台 |
+| **内置文件管理** | ✅ 收藏/最近/文件夹 | ❌ 无 | ✅ 资源管理器 |
+| **版本快照** | ✅ 每文件 10 个 | ❌ 无 | ✅ (需 Git) |
+| **JSON/YAML/XML 查看器** | ✅ 语法高亮 + 格式化 | ❌ 无 | ✅ |
+| **PDF/HTML/Word 导出** | ✅ 一键导出 | ✅ | ❌ 需插件 |
+| **启动速度** | ✅ 快 | ✅ 快 | ❌ 较慢 |
+| **隐私（本地优先）** | ✅ 不上传 | ✅ | ✅ |
+| **开源** | ✅ MIT | ❌ 闭源 | ✅ MIT |
 
 ---
 
@@ -159,11 +193,31 @@ npm run release:major  # 破坏性改动
 
 ---
 
+## 🔒 隐私保护
+
+MarkPad 是一款**本地优先**的编辑器 —— 你的文档永远不会离开你的电脑。
+
+- 绝不收集、不上传、不存储任何文档内容。
+- 当前版本无埋点、无分析、无追踪。
+- 未来版本可能会在**明确征得你同意**的情况下，匿名上报聚合使用数据（文件类型分布、导出次数、崩溃报告），首次启动时弹窗说明，可随时拒绝或关闭。
+- 完整隐私政策：[sirkyzh.github.io/markpad/privacy](https://sirkyzh.github.io/markpad/privacy)
+
+## 💬 反馈与交流
+
+你的意见直接影响 MarkPad 的产品方向：
+
+- 🐛 [提交 Bug / 功能建议](https://github.com/SirKayZh/markpad/issues/new)（GitHub Issues）
+- 📝 [填写反馈问卷](https://sirkyzh.github.io/markpad/feedback)（8 道题，2 分钟）
+- 💡 [参与功能讨论](https://github.com/SirKayZh/markpad/discussions)（GitHub Discussions）
+- 🌐 [访问文档站点](https://sirkyzh.github.io/markpad)
+
+---
+
 ## 🤝 参与贡献
 
 欢迎提交 Issue 和 PR！路线图设想：
 
-- [ ] 多标签页 / 多窗口
+- [x] 多标签页 / 多窗口（v1.6.0）
 - [ ] 自定义 CSS 主题
 - [x] PDF / HTML / Word / 长图 导出（v1.4.0）
 - [x] Windows 支持（v1.4.1）

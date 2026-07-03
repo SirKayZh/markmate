@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarkPad 用户反馈 — 让我们把编辑器做得更好</title>
+  <meta name="description" content="MarkPad 用户反馈问卷 — 你的意见直接影响产品方向。5 道选择题，2 分钟搞定。">
+  <link rel="icon" type="image/png" href="images/icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .feedback-form { max-width: 640px; margin: 0 auto; }
+    .field { margin-bottom: 28px; }
+    .field label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 15px; }
+    .field .hint { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+    .field select, .field textarea, .field input[type=text] {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    .field select:focus, .field textarea:focus, .field input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .field textarea { min-height: 80px; resize: vertical; }
+    .radio-group { display: flex; flex-direction: column; gap: 8px; }
+    .radio-group label { display: flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; font-size: 14px; padding: 8px 12px; border-radius: var(--radius); transition: background 0.2s; }
+    .radio-group label:hover { background: var(--bg-alt); }
+    .radio-group input[type=radio] { accent-color: var(--accent); }
+    .submit-area { text-align: center; margin-top: 32px; }
+    .preview-box {
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      font-family: monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      margin-top: 16px;
+      display: none;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .success-msg { display: none; text-align: center; color: #10b981; font-weight: 600; margin-top: 16px; }
+    .success-msg svg { width: 48px; height: 48px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="container">
+    <a href="index.html" class="logo">
+      <img src="images/icon.png" alt="MarkPad">
+      MarkPad
+    </a>
+    <nav class="nav">
+      <a href="index.html">首页</a>
+      <a href="download.html">下载</a>
+      <a href="privacy.html">隐私</a>
+      <a href="https://github.com/SirKayZh/markpad" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero" style="padding-bottom:20px;">
+  <div class="container">
+    <h1>📝 用户反馈</h1>
+    <p class="subtitle" style="font-size:16px;">你的意见直接影响 MarkPad 的产品方向。共 8 道题，2 分钟搞定。</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="feedback-form" id="feedbackForm">
+
+      <div class="field">
+        <label>1. 你从哪里了解到 MarkPad？</label>
+        <div class="hint">可多选</div>
+        <div class="radio-group" id="q1"></div>
+      </div>
+
+      <div class="field">
+        <label>2. 你主要用 MarkPad 做什么？</label>
+        <div class="hint">可多选</div>
+        <div class="radio-group" id="q2"></div>
+      </div>
+
+      <div class="field">
+        <label>3. 你最满意 MarkPad 哪个功能？</label>
+        <div class="radio-group" id="q3"></div>
+      </div>
+
+      <div class="field">
+        <label>4. 你最希望 MarkPad 新增什么功能？</label>
+        <div class="radio-group" id="q4"></div>
+      </div>
+
+      <div class="field">
+        <label>5. 你愿意把 MarkPad 推荐给别人吗？（0-10）</label>
+        <div class="radio-group" id="q5"></div>
+      </div>
+
+      <div class="field">
+        <label>6. 你之前用什么编辑器？（可多选）</label>
+        <div class="radio-group" id="q6"></div>
+      </div>
+
+      <div class="field">
+        <label>7. 你的操作系统</label>
+        <div class="radio-group" id="q7"></div>
+      </div>
+
+      <div class="field">
+        <label>8. 还有什么想说的？（选填）</label>
+        <textarea id="q8" placeholder="自由吐槽、建议、遇到的 bug……什么都可以写"></textarea>
+      </div>
+
+      <div class="submit-area">
+        <button class="btn btn-primary btn-lg" onclick="submitFeedback()">📤 提交反馈（生成 Issue 模板）</button>
+        <p style="font-size:13px;color:var(--text-secondary);margin-top:8px;">点击后生成格式化文本，复制到 GitHub Issue 提交</p>
+      </div>
+
+      <div class="success-msg" id="successMsg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <p>反馈已生成！点击下方按钮提交到 GitHub ↓</p>
+      </div>
+
+      <div class="preview-box" id="previewBox"></div>
+
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="footer-links">
+      <a href="index.html">首页</a>
+      <a href="download.html">下载</a>
+      <a href="privacy.html">隐私政策</a>
+      <a href="https://github.com/SirKayZh/markpad" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <p class="footer-copy">© 2026 MarkPad Contributors · MIT License</p>
+  </div>
+</footer>
+
+<script>
+  // Questions config
+  var questions = {
+    q1: {
+      multi: true,
+      options: ['GitHub 搜索/推荐','知乎/B站/公众号文章','朋友推荐','AI 搜索引擎（豆包/文心/ChatGPT等）','应用商店/软件推荐站','其他']
+    },
+    q2: {
+      multi: true,
+      options: ['写技术文档/笔记','写博客/文章','查看/编辑 JSON/XML/YAML','AI 训练数据集查看/标注','写小说/长文','日常随手记','其他']
+    },
+    q3: {
+      options: ['WYSIWYG 编辑体验','大纲导航','多格式导出 (PDF/HTML/Word)','自动保存 & 版本快照','JSON/YAML/XML 查看器','多标签页/多窗口','主题 & 布局','其他']
+    },
+    q4: {
+      options: ['Vim 键位绑定','自定义 CSS 主题','移动端支持','AI 写作辅助','插件系统','更多导出格式','其他']
+    },
+    q5: {
+      options: ['0-不推荐','1','2','3','4','5','6','7','8','9','10-强烈推荐']
+    },
+    q6: {
+      multi: true,
+      options: ['Typora','VS Code','Obsidian','Notion','Bear','Ulysses','Sublime Text','系统自带记事本/文本编辑','其他']
+    },
+    q7: {
+      options: ['macOS (Apple Silicon)','macOS (Intel)','Windows 10','Windows 11','Linux']
+    }
+  };
+
+  // Render checkboxes/radios
+  Object.keys(questions).forEach(function(qid) {
+    var q = questions[qid];
+    var container = document.getElementById(qid);
+    q.options.forEach(function(opt, i) {
+      var label = document.createElement('label');
+      var input = document.createElement('input');
+      input.type = q.multi ? 'checkbox' : 'radio';
+      input.name = qid;
+      input.value = opt;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' ' + opt));
+      container.appendChild(label);
+    });
+  });
+
+  function submitFeedback() {
+    var lines = ['## 📝 用户反馈',''];
+    var allEmpty = true;
+
+    var labels = {
+      q1: '1. 从哪里了解到 MarkPad',
+      q2: '2. 主要用途',
+      q3: '3. 最满意的功能',
+      q4: '4. 最想要的新功能',
+      q5: '5. 推荐意愿 (0-10)',
+      q6: '6. 之前用的编辑器',
+      q7: '7. 操作系统',
+      q8: '8. 自由吐槽'
+    };
+
+    Object.keys(labels).forEach(function(qid) {
+      var title = labels[qid];
+      if (qid === 'q8') {
+        var val = document.getElementById('q8').value.trim();
+        if (val) { lines.push('**' + title + '**'); lines.push(val); lines.push(''); allEmpty = false; }
+      } else {
+        var checked = document.querySelectorAll('input[name="' + qid + '"]:checked');
+        if (checked.length > 0) {
+          var vals = [];
+          checked.forEach(function(cb) { vals.push(cb.value); });
+          lines.push('- **' + title + '**：' + vals.join('、'));
+          allEmpty = false;
+        }
+      }
+    });
+
+    lines.push('---');
+    lines.push('> 通过 MarkPad 反馈页面提交');
+
+    if (allEmpty) {
+      alert('请至少填写一个问题！');
+      return;
+    }
+
+    var text = lines.join('\n');
+    var preview = document.getElementById('previewBox');
+    preview.textContent = text;
+    preview.style.display = 'block';
+    document.getElementById('successMsg').style.display = 'block';
+    preview.scrollIntoView({ behavior: 'smooth' });
+  }
+</script>
+
+</body>
+</html>

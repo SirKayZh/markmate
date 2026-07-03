@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/SirKayZh/markpad/discussions
+    about: Ask questions, share ideas, and discuss with the community
+  - name: 📝 Feedback Survey
+    url: https://sirkyzh.github.io/markpad/feedback
+    about: Fill out our 8-question feedback survey (2 minutes)
+  - name: 🌐 Documentation
+    url: https://sirkyzh.github.io/markpad
+    about: Visit the MarkPad documentation site

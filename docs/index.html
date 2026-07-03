@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarkPad — 免费开源的 WYSIWYG Markdown 编辑器 | macOS & Windows</title>
+  <meta name="description" content="MarkPad 是一款轻快专注的所见即所得 Markdown 编辑器，支持 macOS 与 Windows。实时预览、大纲导航、自动保存、PDF/HTML/Word 导出、JSON/YAML/XML 查看器。Typora 的免费替代品。">
+  <meta name="keywords" content="Markdown编辑器, WYSIWYG Markdown编辑器, Typora替代, macOS Markdown编辑器, Windows Markdown编辑器, Markdown导出PDF, JSON查看器, YAML查看器, 免费Markdown编辑器, 开源Markdown编辑器, 写作工具, 笔记工具">
+  <meta name="author" content="MarkPad Contributors">
+  <meta property="og:title" content="MarkPad — 免费开源的 WYSIWYG Markdown 编辑器">
+  <meta property="og:description" content="轻快专注的所见即所得 Markdown 编辑器，macOS & Windows 双平台，Typora 的免费替代品。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sirkyzh.github.io/markpad">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/png" href="images/icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // Simple analytics - only count pageviews, no personal data
+    (function() {
+      var ref = document.referrer || 'direct';
+      var lang = navigator.language || 'unknown';
+      var key = 'mkpad_pv_' + new Date().toISOString().slice(0,10);
+      var today = parseInt(localStorage.getItem(key) || '0') + 1;
+      localStorage.setItem(key, today.toString());
+    })();
+  </script>
+</head>
+<body>
+
+<header class="header">
+  <div class="container">
+    <a href="index.html" class="logo">
+      <img src="images/icon.png" alt="MarkPad">
+      MarkPad
+    </a>
+    <nav class="nav">
+      <a href="#features">功能</a>
+      <a href="#shortcuts">快捷键</a>
+      <a href="download.html">下载</a>
+      <a href="privacy.html">隐私</a>
+      <a href="https://github.com/SirKayZh/markpad" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <img src="images/icon.png" alt="MarkPad" class="hero-icon">
+    <h1>MarkPad ⚡</h1>
+    <p class="subtitle">
+      轻快专注的 WYSIWYG Markdown 编辑器 — 所见即所得 + 强大导航 + 永不丢稿。<br>
+      <strong>Typora 的免费替代品</strong>，macOS & Windows 双平台，本地文件永远属于你。
+    </p>
+    <div class="hero-actions">
+      <a href="download.html" class="btn btn-primary btn-lg">⬇ 下载 MarkPad v1.6.1</a>
+      <a href="https://github.com/SirKayZh/markpad" class="btn btn-secondary btn-lg" target="_blank" rel="noopener">GitHub 仓库</a>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:12px;">
+      <span class="platform-badge">🍎 macOS (Apple Silicon + Intel)</span>
+      <span class="platform-badge">🪟 Windows x64</span>
+      <span class="platform-badge">📜 MIT 开源</span>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section" id="features">
+  <div class="container">
+    <h2 class="section-title">✨ 功能特性</h2>
+    <div class="features">
+      <div class="feature-card">
+        <span class="icon">✍️</span>
+        <h3>所见即所得编辑</h3>
+        <p>Vditor IR 即时渲染，打字即预览，体验如 Typora。专注模式 + 打字机模式，沉浸写作。</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">🧭</span>
+        <h3>智能导航</h3>
+        <p>多级大纲树 + 文件管理面板（收藏/最近/当前文件夹）。⌘P 快速打开，模糊搜索秒开文件。</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">🛡️</span>
+        <h3>永不丢稿</h3>
+        <p>1.5s 防抖自动保存 + 每文件 10 个历史快照 + 崩溃恢复。未保存关闭时弹窗确认，三重保险。</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">📤</span>
+        <h3>多格式导出</h3>
+        <p>一键导出 PDF / HTML / Word（.docx）/ 长图 PNG。保留字体、代码块、表格、图片，零外部依赖。</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">💻</span>
+        <h3>代码/配置文件查看器</h3>
+        <p>直接打开 .json / .xml / .yaml / .jsonl，Prism.js 语法高亮，一键格式化。轻量替代 VS Code 查看。</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">🎨</span>
+        <h3>主题与布局</h3>
+        <p>亮色/暗色/跟随系统 + 5 套排版主题。三栏可拖动布局（大纲↔编辑器↔源码），双向同步。</p>
+      </div>
+    </div>
+    <div class="export-formats">
+      <span class="format-badge">📄 PDF</span>
+      <span class="format-badge">🌐 HTML</span>
+      <span class="format-badge">📝 Word (.docx)</span>
+      <span class="format-badge">🖼️ 长图 PNG</span>
+      <span class="format-badge">📊 JSON</span>
+      <span class="format-badge">📋 XML</span>
+      <span class="format-badge">⚙️ YAML</span>
+    </div>
+  </div>
+</section>
+
+<!-- Why MarkPad -->
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">🤔 为什么选 MarkPad？</h2>
+    <div class="comparison">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>MarkPad</th>
+            <th>Typora</th>
+            <th>VS Code</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>完全免费</td>
+            <td class="check">✓</td>
+            <td class="cross">$14.99</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td>WYSIWYG Markdown</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+            <td class="cross">预览分离</td>
+          </tr>
+          <tr>
+            <td>macOS + Windows</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td>文件管理面板</td>
+            <td class="check">✓</td>
+            <td class="cross">无</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td>历史版本快照</td>
+            <td class="check">✓</td>
+            <td class="cross">无</td>
+            <td class="check">✓ (Git)</td>
+          </tr>
+          <tr>
+            <td>JSON/YAML/XML 查看器</td>
+            <td class="check">✓</td>
+            <td class="cross">无</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td>PDF/HTML/Word 导出</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+            <td class="cross">需插件</td>
+          </tr>
+          <tr>
+            <td>启动速度</td>
+            <td class="check">快</td>
+            <td class="check">快</td>
+            <td class="cross">较慢</td>
+          </tr>
+          <tr>
+            <td>隐私优先（本地文件）</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+            <td class="check">✓</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- Shortcuts -->
+<section class="section" id="shortcuts">
+  <div class="container">
+    <h2 class="section-title">⌨️ 快捷键速查</h2>
+    <table class="shortcuts">
+      <thead>
+        <tr><th>操作</th><th>macOS</th><th>Windows</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>新建</td><td><kbd>⌘N</kbd></td><td><kbd>Ctrl+N</kbd></td></tr>
+        <tr><td>快速打开</td><td><kbd>⌘P</kbd></td><td><kbd>Ctrl+P</kbd></td></tr>
+        <tr><td>保存</td><td><kbd>⌘S</kbd></td><td><kbd>Ctrl+S</kbd></td></tr>
+        <tr><td>搜索</td><td><kbd>⌘F</kbd></td><td><kbd>Ctrl+F</kbd></td></tr>
+        <tr><td>切换大纲</td><td><kbd>⌘\</kbd></td><td><kbd>Ctrl+\</kbd></td></tr>
+        <tr><td>切换源码</td><td><kbd>⌘E</kbd></td><td><kbd>Ctrl+E</kbd></td></tr>
+        <tr><td>专注模式</td><td><kbd>⌘⇧F</kbd></td><td><kbd>Ctrl+⇧F</kbd></td></tr>
+        <tr><td>导出 PDF</td><td><kbd>⌘⇧P</kbd></td><td><kbd>Ctrl+⇧P</kbd></td></tr>
+        <tr><td>切换主题</td><td><kbd>⌘/</kbd></td><td><kbd>Ctrl+/</kbd></td></tr>
+        <tr><td>收藏文件</td><td><kbd>⌘D</kbd></td><td><kbd>Ctrl+D</kbd></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Feedback -->
+<section class="section" id="feedback">
+  <div class="container">
+    <h2 class="section-title">💬 反馈与交流</h2>
+    <p style="text-align:center;color:var(--text-secondary);margin-bottom:24px;">
+      你的使用体验对 MarkPad 的成长至关重要。请通过以下渠道告诉我们：
+    </p>
+    <div class="feedback-options">
+      <a href="https://github.com/SirKayZh/markpad/issues/new" class="feedback-card" target="_blank" rel="noopener">
+        <span class="icon">🐛</span>
+        <span class="label">提交 Issue</span>
+      </a>
+      <a href="feedback.html" class="feedback-card">
+        <span class="icon">📝</span>
+        <span class="label">反馈问卷</span>
+      </a>
+      <a href="https://github.com/SirKayZh/markpad/discussions" class="feedback-card" target="_blank" rel="noopener">
+        <span class="icon">💡</span>
+        <span class="label">功能讨论</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-bar">
+  <div class="container">
+    <h2>准备好试试 MarkPad 了吗？</h2>
+    <p>免费、开源、本地文件永远属于你。</p>
+    <a href="download.html" class="btn btn-primary btn-lg">⬇ 免费下载 v1.6.1</a>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="footer-links">
+      <a href="index.html">首页</a>
+      <a href="download.html">下载</a>
+      <a href="privacy.html">隐私政策</a>
+      <a href="https://github.com/SirKayZh/markpad" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/SirKayZh/markpad/blob/main/README.md" target="_blank" rel="noopener">English</a>
+    </div>
+    <p class="footer-copy">© 2026 MarkPad Contributors · MIT License</p>
+  </div>
+</footer>
+
+</body>
+</html>

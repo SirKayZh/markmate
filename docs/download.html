@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>下载 MarkPad — 免费 WYSIWYG Markdown 编辑器</title>
+  <meta name="description" content="下载 MarkPad v1.6.1 — 支持 macOS (Apple Silicon / Intel) 和 Windows，免费开源 Markdown 编辑器。">
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/png" href="images/icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // UTM tracking — store source info, then redirect to GitHub Releases
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var utm = {};
+      ['source','medium','campaign','term','content'].forEach(function(k) {
+        var v = params.get('utm_' + k);
+        if (v) utm[k] = v;
+      });
+      var ref = document.referrer || 'direct';
+
+      // Store for analytics
+      var visit = {
+        time: new Date().toISOString(),
+        utm: utm,
+        referrer: ref,
+        userAgent: navigator.userAgent.slice(0, 200)
+      };
+      var visits = JSON.parse(localStorage.getItem('mkpad_download_visits') || '[]');
+      visits.push(visit);
+      if (visits.length > 100) visits = visits.slice(-50); // keep last 50
+      localStorage.setItem('mkpad_download_visits', JSON.stringify(visits));
+
+      // Log the attribution (can be sent to analytics later)
+      console.log('[MarkPad DL]', JSON.stringify(visit));
+    })();
+  </script>
+</head>
+<body>
+
+<header class="header">
+  <div class="container">
+    <a href="index.html" class="logo">
+      <img src="images/icon.png" alt="MarkPad">
+      MarkPad
+    </a>
+    <nav class="nav">
+      <a href="index.html">首页</a>
+      <a href="https://github.com/SirKayZh/markpad" target="_blank" rel="noopener">GitHub</a>
+      <a href="privacy.html">隐私</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <div class="container">
+    <h1>下载 MarkPad</h1>
+    <p class="subtitle" style="margin-bottom:16px;">最新版本 <strong>v1.6.1</strong> · 2026-06-19</p>
+    <p style="color:var(--text-secondary);font-size:14px;margin-bottom:20px;">
+      应用未签名。macOS 请右键打开，Windows 请点击「更多信息 → 仍要运行」。
+    </p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">🍎 macOS</h2>
+    <div class="download-options">
+      <div class="download-card">
+        <div class="os">Apple Silicon</div>
+        <div class="arch">M1 / M2 / M3 / M4</div>
+        <a href="https://github.com/SirKayZh/markpad/releases/download/v1.6.1/MarkPad-1.6.1-arm64.dmg" class="btn btn-primary" onclick="trackDownload('mac-arm64')" target="_blank" rel="noopener">
+          ⬇ 下载 DMG
+        </a>
+        <div class="size">107 MB</div>
+      </div>
+      <div class="download-card">
+        <div class="os">Intel</div>
+        <div class="arch">x64 处理器</div>
+        <a href="https://github.com/SirKayZh/markpad/releases/download/v1.6.1/MarkPad-1.6.1-x64.dmg" class="btn btn-primary" onclick="trackDownload('mac-x64')" target="_blank" rel="noopener">
+          ⬇ 下载 DMG
+        </a>
+        <div class="size">114 MB</div>
+      </div>
+    </div>
+    <p style="text-align:center;margin-top:12px;font-size:13px;color:var(--text-secondary);">
+      下载后双击 DMG → 将 MarkPad 拖入 Applications 文件夹 → 首次打开右键选择「打开」
+    </p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">🪟 Windows</h2>
+    <div class="download-options">
+      <div class="download-card">
+        <div class="os">安装版（推荐）</div>
+        <div class="arch">NSIS 安装程序</div>
+        <a href="https://github.com/SirKayZh/markpad/releases/download/v1.6.1/MarkPad-1.6.1-x64-setup.exe" class="btn btn-primary" onclick="trackDownload('win-setup')" target="_blank" rel="noopener">
+          ⬇ 下载 EXE
+        </a>
+        <div class="size">79.7 MB</div>
+      </div>
+      <div class="download-card">
+        <div class="os">便携版</div>
+        <div class="arch">免安装，解压即用</div>
+        <a href="https://github.com/SirKayZh/markpad/releases/download/v1.6.1/MarkPad-1.6.1-x64-portable.exe" class="btn btn-secondary" onclick="trackDownload('win-portable')" target="_blank" rel="noopener">
+          ⬇ 下载 EXE
+        </a>
+        <div class="size">72.5 MB</div>
+      </div>
+    </div>
+    <p style="text-align:center;margin-top:12px;font-size:13px;color:var(--text-secondary);">
+      安装版支持自定义安装路径与桌面快捷方式。便携版免安装，双击即用。
+    </p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">📦 其他版本</h2>
+    <p style="text-align:center;">
+      <a href="https://github.com/SirKayZh/markpad/releases" class="btn btn-secondary" target="_blank" rel="noopener">
+        查看全部 Releases →
+      </a>
+    </p>
+  </div>
+</section>
+
+<!-- Feedback CTA -->
+<section class="cta-bar">
+  <div class="container">
+    <h2>下载后请告诉我们你的体验</h2>
+    <p>5 道选择题，2 分钟填完，帮助 MarkPad 变得更好。</p>
+    <a href="feedback.html" class="btn btn-primary btn-lg">📝 填写反馈问卷</a>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="footer-links">
+      <a href="index.html">首页</a>
+      <a href="privacy.html">隐私政策</a>
+      <a href="https://github.com/SirKayZh/markpad" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/SirKayZh/markpad/releases" target="_blank" rel="noopener">Releases</a>
+    </div>
+    <p class="footer-copy">© 2026 MarkPad Contributors · MIT License</p>
+  </div>
+</footer>
+
+<script>
+  function trackDownload(platform) {
+    var downloads = JSON.parse(localStorage.getItem('mkpad_dl_clicks') || '{}');
+    downloads[platform] = (downloads[platform] || 0) + 1;
+    downloads['_last'] = new Date().toISOString();
+    localStorage.setItem('mkpad_dl_clicks', JSON.stringify(downloads));
+  }
+</script>
+
+</body>
+</html>

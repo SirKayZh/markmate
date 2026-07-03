@@ -1,18 +1,31 @@
 # MarkPad ⚡
 
-> A lightweight, distraction-free Markdown editor for **macOS & Windows** — WYSIWYG editing meets powerful navigation and never-lose-your-work safety.
+> **The free, open-source Typora alternative.** A lightning-fast WYSIWYG Markdown editor for macOS & Windows — write in peace, navigate with ease, never lose your work. Also opens JSON, YAML, XML, and JSONL with syntax highlighting.
 >
-> 一款轻快专注的 **macOS / Windows** Markdown 编辑器 — 所见即所得 + 强大导航 + 永不丢稿。
+> **免费开源的 Typora 替代品。** 一款轻快专注的 WYSIWYG Markdown 编辑器，macOS & Windows 双平台。所见即所得 + 大纲导航 + 永不丢稿。还能直接查看 JSON/YAML/XML/JSONL。
 
 ![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows-blue)
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
+![release](https://img.shields.io/badge/release-v1.6.1-3b82f6)
 
-**English** · [简体中文](README.zh-CN.md)
+**English** · [简体中文](README.zh-CN.md) · [🌐 Documentation](https://sirkyzh.github.io/markpad)
 
 <p align="center">
   <img src="build/preview-icon.png" width="128" alt="MarkPad icon">
 </p>
+
+<p align="center">
+  <a href="https://github.com/SirKayZh/markpad/releases"><img src="https://img.shields.io/badge/⬇️_Download-Latest_Release-3b82f6?style=for-the-badge" alt="Download"></a>
+  &nbsp;
+  <a href="https://github.com/SirKayZh/markpad/issues/new"><img src="https://img.shields.io/badge/🐛_Report_Bug-gray?style=for-the-badge" alt="Report Bug"></a>
+  &nbsp;
+  <a href="https://sirkyzh.github.io/markpad/feedback"><img src="https://img.shields.io/badge/📝_Feedback_Survey-gray?style=for-the-badge" alt="Feedback"></a>
+</p>
+
+---
+
+> 📸 **Screenshots coming soon** — we're preparing high-quality UI screenshots. In the meantime, check out the [feature list](#-features) below or [try it yourself](https://github.com/SirKayZh/markpad/releases).
 
 ---
 
@@ -77,6 +90,25 @@
 - **File association** — registered handler for `.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt` `.xml` `.json` `.jsonl` `.yml` `.yaml`; set MarkPad as your default editor in Finder
 - **Native feel** — inset traffic lights, document-dirty dot, recent files menu, word count in status bar
 - **Privacy-aware** — won't trigger macOS "access Desktop/Downloads" permission dialogs on first use
+
+---
+
+---
+
+## 🤔 Why MarkPad?
+
+| | **MarkPad** | **Typora** | **VS Code** |
+|---|:---:|:---:|:---:|
+| **Price** | ✅ Free & Open Source | ❌ $14.99 | ✅ Free |
+| **WYSIWYG Editing** | ✅ Instant render | ✅ Instant render | ❌ Split preview |
+| **macOS + Windows** | ✅ Both | ✅ Both | ✅ Both |
+| **Built-in File Manager** | ✅ Favorites / Recent / Folder | ❌ None | ✅ Explorer |
+| **Version Snapshots** | ✅ 10 per file | ❌ None | ✅ (via Git) |
+| **JSON / YAML / XML Viewer** | ✅ Syntax highlight + format | ❌ None | ✅ |
+| **PDF / HTML / Word Export** | ✅ One-click | ✅ | ❌ Plugins needed |
+| **Startup Speed** | ✅ Fast | ✅ Fast | ❌ Slower |
+| **Privacy (local-first)** | ✅ No uploads | ✅ | ✅ |
+| **Open Source** | ✅ MIT | ❌ Proprietary | ✅ MIT |
 
 ---
 
@@ -161,11 +193,31 @@ npm run release:major  # bump major + build + commit + tag
 
 ---
 
+## 🔒 Privacy
+
+MarkPad is a **local-first** editor — your documents never leave your computer.
+
+- No document content is ever uploaded to any server.
+- No telemetry, no analytics, no tracking in the current version.
+- Future versions may offer **opt-in** anonymous usage stats (file type distribution, export counts, crash reports) with a clear consent dialog — you can decline or disable it at any time.
+- Full privacy policy: [sirkyzh.github.io/markpad/privacy](https://sirkyzh.github.io/markpad/privacy)
+
+## 💬 Feedback & Community
+
+Your feedback shapes MarkPad's future:
+
+- 🐛 [Report a bug / Request a feature](https://github.com/SirKayZh/markpad/issues/new) (GitHub Issues)
+- 📝 [Fill out the feedback survey](https://sirkyzh.github.io/markpad/feedback) (8 questions, 2 min)
+- 💡 [Join the discussion](https://github.com/SirKayZh/markpad/discussions) (GitHub Discussions)
+- 🌐 [Visit documentation site](https://sirkyzh.github.io/markpad)
+
+---
+
 ## 🤝 Contributing
 
 Issues and PRs are welcome! Ideas for the roadmap:
 
-- [ ] Multiple tabs / windows
+- [x] Multiple tabs / windows (v1.6.0)
 - [ ] Custom CSS themes
 - [x] PDF / HTML / Word / Long image export (v1.4.0)
 - [x] Windows support (v1.4.1)
