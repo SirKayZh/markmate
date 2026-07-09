@@ -7,17 +7,16 @@
   <meta name="description" content="MarkMate 隐私政策 — 了解我们如何保护你的数据。MarkMate 是一款本地优先的编辑器，不上传文档内容。">
   <link rel="icon" type="image/png" href="images/icon.png">
   <link rel="stylesheet" href="styles.css">
-  <!-- Baidu Analytics -->
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-S62L3LN71Z"></script>
   <script>
-  var _hmt = _hmt || [];
-  (function() {
-    var hm = document.createElement("script");
-    hm.src = "https://hm.baidu.com/hm.js?YOUR_BAIDU_SITE_ID";
-    var s = document.getElementsByTagName("script")[0];
-    s.parentNode.insertBefore(hm, s);
-  })();
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-S62L3LN71Z');
   </script>
-  <!-- End Baidu Analytics -->
+  <!-- End Google tag (gtag.js) -->
 </head>
 <body>
 
@@ -74,11 +73,27 @@
       </ul>
       <p>此功能将在首次使用时弹出明确提示，你可以选择<strong>同意或拒绝</strong>。拒绝后不会有任何数据上报。你可以在设置中随时开启或关闭。</p>
 
-      <h3>2.3 下载页面统计（仅网站）</h3>
-      <p>本站点（GitHub Pages）使用浏览器本地存储（localStorage）记录页面访问与下载点击行为。这些数据仅存储在你的浏览器中，不会被发送到任何服务器。我们使用这些数据来了解哪个版本的软件更受欢迎，以便优化下载体验。</p>
+      <h3>2.3 网站统计</h3>
+      <p>本站点使用 <strong>Google Analytics（GA4）</strong> 收集匿名访问统计数据，包括页面浏览量、访问来源（搜索引擎/社交媒体/直接访问）、访问者地理位置（仅城市级别）、设备类型与浏览器版本。这些数据帮助我们了解哪些功能更受关注，以便优化网站内容和下载体验。</p>
+      <p>Google Analytics 通过 Cookie 和设备指纹技术收集以下数据：</p>
+      <ul>
+        <li>页面浏览记录（URL）</li>
+        <li>访问来源（referrer）</li>
+        <li>大致地理位置（城市级别，非精确位置）</li>
+        <li>设备类型、操作系统、浏览器版本</li>
+        <li>页面停留时间</li>
+      </ul>
+      <p><strong>我们不会通过 Google Analytics 收集：</strong></p>
+      <ul>
+        <li>个人身份信息（姓名、邮箱、IP 地址等）</li>
+        <li>精确地理位置（GA4 默认匿名化 IP）</li>
+      </ul>
+      <p>你可以通过浏览器设置禁用 Cookie 或安装广告拦截插件来阻止 Google Analytics 追踪。Google 的数据处理条款详见其 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">隐私政策</a>。</p>
+      <p>此外，本站也使用浏览器本地存储（localStorage）记录页面访问与下载点击行为。这些数据仅存储在你的浏览器中，不会被发送到任何服务器。</p>
 
       <h2>3. 第三方服务</h2>
       <p>MarkMate 应用本身<strong>不集成任何第三方分析、广告或追踪 SDK</strong>。MarkMate 网站托管在 GitHub Pages 上，GitHub 可能会按照其<a href="https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement" target="_blank" rel="noopener">隐私声明</a>收集访问日志。</p>
+      <p>本站使用 <strong>Google Analytics（GA4）</strong> 进行网站访问统计。Google Analytics 是 Google LLC 提供的网络分析服务，通过 Cookie 和 Web 信标收集匿名访问数据。Google 可能会将这些数据用于其自身的服务改进。详情请参阅 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google 隐私政策</a> 和 <a href="https://support.google.com/analytics/answer/6004245" target="_blank" rel="noopener">Google Analytics 数据保护说明</a>。</p>
 
       <h2>4. 数据安全</h2>
       <p>由于你的文档完全存储在本地，数据安全取决于你的计算机安全实践。我们建议：</p>
@@ -101,7 +116,7 @@
       <h2>7. 政策更新</h2>
       <p>本隐私政策可能会随产品迭代而更新。重大变更将通过 GitHub Release Notes 和本页面公告。</p>
 
-      <p class="last-updated">最后更新：2026-07-02</p>
+      <p class="last-updated">最后更新：2026-07-09</p>
 
     </div>
   </div>
