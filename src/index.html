@@ -189,6 +189,11 @@
     <button data-action="reveal" id="tab-ctx-reveal">在文件夹中显示</button>
   </div>
 
+  <!-- 文件列表右键菜单 -->
+  <div id="file-context-menu" class="hidden">
+    <button data-action="open-folder" id="file-ctx-open-folder">在 Finder 中打开</button>
+  </div>
+
   <div id="quick-open-overlay" class="hidden">
     <div id="quick-open-panel">
       <input id="quick-open-input" type="text" placeholder="搜索文件名打开…" spellcheck="false" autocomplete="off">
@@ -246,6 +251,11 @@
     <span>检测到上次未保存的草稿</span>
     <button id="draft-restore" type="button">恢复</button>
     <button id="draft-discard" type="button">忽略</button>
+  </div>
+  <div id="update-banner" class="hidden">
+    <span id="update-banner-msg">发现新版本</span>
+    <button id="update-banner-view" type="button">查看</button>
+    <button id="update-banner-dismiss" type="button">×</button>
   </div>
 
   <script src="json-tree.js"></script>

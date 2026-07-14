@@ -24,6 +24,8 @@ rewriteShortcutLabels();
 (function () {
   const revealBtn = document.getElementById('tab-ctx-reveal');
   if (revealBtn) revealBtn.textContent = isMac ? '在 Finder 中显示' : '在文件夹中显示';
+  const openFolderBtn = document.getElementById('file-ctx-open-folder');
+  if (openFolderBtn) openFolderBtn.textContent = isMac ? '在 Finder 中打开' : '在文件夹中打开';
 })();
 
 let vditorReady = false;
@@ -255,6 +257,8 @@ function saveCurrentTabState() {
   // 保存 JSON viewer 状态
   tab.jsonView = currentJsonView;
   tab.jsonlPage = jsonlPage;
+  // 保存 JSONL 对话标注编辑（按 tab 隔离，避免跨文件切换丢失）
+  if (chatEdits instanceof Map) tab._chatEdits = new Map(chatEdits);
   if (currentCodeMode && codeEditor) {
     tab.scrollTop = codeEditor.scrollTop;
     tab.cursorPos = codeEditor.selectionStart;
@@ -291,6 +295,7 @@ function createTab(filePath, content, codeMode, options = {}) {
     cursorPos: 0,
     jsonView: 'tree',
     jsonlPage: 0,
+    _chatEdits: new Map(),   // JSONL 标注编辑缓存（按 tab 隔离）
   };
   tabs.push(tab);
   renderTabBar();
@@ -330,6 +335,8 @@ async function switchToTab(tabId) {
   isDirty = tab.dirty;
   currentJsonView = tab.jsonView || 'tree';
   jsonlPage = tab.jsonlPage || 0;
+  // 恢复 JSONL 标注编辑缓存（按 tab 隔离，避免跨文件切换丢失）
+  chatEdits = tab._chatEdits instanceof Map ? new Map(tab._chatEdits) : new Map();
 
   applyCodeMode(tab.codeMode);
   if (tab.codeMode) {
@@ -391,13 +398,13 @@ async function closeTab(tabId) {
     const action = await window.markmate.askCloseConfirm();
     if (action === 'cancel') return;
     if (action === 'save') {
-      // 先切到该 tab 保存
-      const prevTabId = activeTabId;
-      if (activeTabId !== tabId) switchToTab(tabId);
-      const content = getEditorContent();
+      // 先切到该 tab 保存（必须 await，否则 getEditorContent 可能读到旧 tab 的内容）
+      if (activeTabId !== tabId) await switchToTab(tabId);
+      const content = isChatViewMode() ? buildJsonlContentFromEdits() : getEditorContent();
       const res = await window.markmate.saveContent(content, false);
       if (!res.saved) return;
       markDirty(false);
+      if (isChatViewMode() && chatEdits.size > 0) chatEdits = new Map();  // 关闭保存后清空编辑缓存
       if (res.path) {
         currentFilePath = res.path;
         tab.filePath = res.path;
@@ -427,23 +434,27 @@ async function closeTab(tabId) {
 // 关闭其他 tab
 function closeOtherTabs(keepTabId) {
   const toClose = tabs.filter(t => t.id !== keepTabId && !t.dirty);
+  const skipped = tabs.filter(t => t.id !== keepTabId && t.dirty);
   toClose.forEach(t => {
     const idx = tabs.indexOf(t);
     tabs.splice(idx, 1);
   });
   if (activeTabId !== keepTabId) switchToTab(keepTabId);
   renderTabBar();
+  if (skipped.length > 0) showQuickToast(`${skipped.length} 个 Tab 因未保存被保留`);
 }
 
 // 关闭右侧 tab
 function closeRightTabs(tabId) {
   const idx = tabs.findIndex(t => t.id === tabId);
   const toClose = tabs.slice(idx + 1).filter(t => !t.dirty);
+  const skipped = tabs.slice(idx + 1).filter(t => t.dirty);
   toClose.forEach(t => {
     const i = tabs.indexOf(t);
     if (i >= 0) tabs.splice(i, 1);
   });
   renderTabBar();
+  if (skipped.length > 0) showQuickToast(`${skipped.length} 个右侧 Tab 因未保存被保留`);
 }
 
 // 渲染 Tab 栏
@@ -617,6 +628,7 @@ function loadContent(value) {
       if (overlay) overlay.classList.add('show');
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          if (!vditor || !vditorReady) { if (overlay) overlay.classList.remove('show'); return; }
           vditor.setValue(content);
           syncingFromSource = false;
           markDirty(false);
@@ -627,6 +639,7 @@ function loadContent(value) {
       });
       return;
     }
+    if (!vditor || !vditorReady) return;  // vditor 可能在异步等待中被销毁（快速切 tab）
     vditor.setValue(content);
     syncingFromSource = false;
     markDirty(false);
@@ -744,6 +757,7 @@ function initVditor(value) {
       applyEditorTheme();
       syncSourceFromVditor(true);
       scheduleOutlineRefresh();
+      initScrollSync();
       // 隐藏大文件加载遮罩
       const overlay = document.getElementById('loading-overlay');
       if (overlay) overlay.classList.remove('show');
@@ -941,8 +955,22 @@ function renderOutlineTree() {
 let outlineRefreshTimer = null;
 function scheduleOutlineRefresh() {
   if (outlineRefreshTimer) clearTimeout(outlineRefreshTimer);
-  outlineRefreshTimer = setTimeout(() => { outlineRefreshTimer = null; renderOutlineTree(); }, 200);
+  outlineRefreshTimer = setTimeout(() => {
+    outlineRefreshTimer = null;
+    // rAF 确保 Vditor 内部 DOM 操作（如 ### 转换为 h3[data-block]）已完成
+    requestAnimationFrame(() => renderOutlineTree());
+  }, 200);
 }
+
+// keyup 备用触发：Vditor 快捷转换（### / > / ``` 等）可能在 input 回调之后
+// 才完成 DOM 创建，用 keyup 兜底确保目录不遗漏
+document.addEventListener('keyup', (e) => {
+  if (currentCodeMode || !vditorReady) return;
+  const vditorEl = document.getElementById('vditor');
+  if (vditorEl && vditorEl.contains(e.target)) {
+    scheduleOutlineRefresh();
+  }
+});
 
 document.getElementById('outline-content').addEventListener('click', (e) => {
   const chev = e.target.closest('[data-toggle]');
@@ -962,6 +990,11 @@ document.getElementById('outline-content').addEventListener('click', (e) => {
   const heading = document.getElementById(targetId);
   if (!heading) return;
   try { heading.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); } catch (_) {}
+  // 同步源码面板滚动到对应位置
+  if (sourceVisible) {
+    const editorScroll = getEditorScrollEl();
+    if (editorScroll) syncScrollRatio(editorScroll, sourceEditor);
+  }
   showJumpToast({ textContent: item.querySelector('.ol-text')?.textContent || '' });
   flashHeading(heading);
   document.querySelectorAll('#outline-tree .ol-item').forEach(el => el.classList.remove('active'));
@@ -1171,12 +1204,12 @@ async function refreshFileList() {
         entries = await window.markmate.listDirectory(dir);
         setCachedDirectory(dir, entries);
       }
-      const mdFiles = entries.filter(e => !e.isDir).filter(matchQuery);
-      if (folderCountEl) folderCountEl.textContent = mdFiles.length ? mdFiles.length : '';
-      if (!mdFiles.length) {
-        folderEl.innerHTML = `<div class="file-item" style="opacity:0.5;font-size:11px">${filesSearchQuery ? '没有匹配的文件' : '此目录下没有 md 文件'}</div>`;
+      const allEntries = entries.filter(matchQuery);
+      if (folderCountEl) folderCountEl.textContent = allEntries.length ? allEntries.length : '';
+      if (!allEntries.length) {
+        folderEl.innerHTML = `<div class="file-item" style="opacity:0.5;font-size:11px">${filesSearchQuery ? '没有匹配的文件' : '此目录下没有文件'}</div>`;
       } else {
-        renderFileSection('folder-list', mdFiles.map(f => ({ ...f, isFav: isFavorited(f.path) })), false);
+        renderFileSection('folder-list', allEntries.map(f => ({ ...f, isFav: isFavorited(f.path) })), false);
       }
     } catch (err) {
       folderEl.innerHTML = '<div class="file-item" style="opacity:0.5">无法读取目录</div>';
@@ -1204,14 +1237,16 @@ function renderFileSection(containerId, files, isFavSection) {
     return;
   }
   container.innerHTML = files.map(f => {
+    const isDir = f.isDir;
     const starOn = f.isFav;
     const isCur = currentFilePath && f.path === currentFilePath;
     const star = starOn ? '★' : '☆';
     const starTitle = starOn ? '取消收藏' : '加入收藏';
-    return `<div class="file-item ${isCur ? 'current' : ''}" data-path="${escapeAttr(f.path)}" title="${escapeAttr(f.path)}">
+    const dirAttr = isDir ? ' data-is-dir="1"' : '';
+    return `<div class="file-item ${isCur ? 'current' : ''}" data-path="${escapeAttr(f.path)}"${dirAttr} title="${escapeAttr(f.path)}">
       <span class="fi-icon">${fileIconFor(f)}</span>
       <span class="fi-name">${escapeHtml(f.name)}</span>
-      <span class="fi-star ${starOn ? 'favorited' : ''}" data-action="fav" title="${starTitle}">${star}</span>
+      ${isDir ? '' : `<span class="fi-star ${starOn ? 'favorited' : ''}" data-action="fav" title="${starTitle}">${star}</span>`}
     </div>`;
   }).join('');
   // 事件委托已在 files-content 上统一绑定，不再逐元素加监听器
@@ -1239,8 +1274,71 @@ document.getElementById('files-content').addEventListener('click', (e) => {
   }
   const fileItem = e.target.closest('.file-item');
   if (fileItem && fileItem.dataset.path) {
-    window.markmate.openFileByPath(fileItem.dataset.path);
+    if (fileItem.dataset.isDir) {
+      // 点击文件夹：在 Finder 中打开
+      window.markmate.openFolder(fileItem.dataset.path);
+    } else {
+      window.markmate.openFileByPath(fileItem.dataset.path);
+    }
   }
+});
+
+// 文件列表右键菜单
+let fileContextMenuTarget = null;
+const fileContextMenu = document.getElementById('file-context-menu');
+
+function showFileContextMenu(fileItem, x, y) {
+  fileContextMenuTarget = fileItem.dataset.path;
+  fileContextMenu.classList.remove('hidden');
+  fileContextMenu.style.left = x + 'px';
+  fileContextMenu.style.top = y + 'px';
+  // 边界修正
+  const rect = fileContextMenu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) fileContextMenu.style.left = (window.innerWidth - rect.width - 4) + 'px';
+  if (rect.bottom > window.innerHeight) fileContextMenu.style.top = (window.innerHeight - rect.height - 4) + 'px';
+}
+
+function _handleFileListRightClick(e, source) {
+  const fileItem = e.target.closest('.file-item');
+  if (!fileItem) {
+    showQuickToast(`[${source}] 右键在: ${e.target.tagName}(非文件条目)`);
+    return;
+  }
+  if (fileItem.dataset.isDir) {
+    showQuickToast(`[${source}] ✅ 触发了! 文件夹: ${fileItem.dataset.path.split('/').pop()}`);
+    e.preventDefault();
+    showFileContextMenu(fileItem, e.clientX, e.clientY);
+  } else {
+    showQuickToast(`[${source}] 右键在文件: ${fileItem.dataset.path.split('/').pop()}(非文件夹)`);
+  }
+}
+
+// contextmenu 事件（鼠标右键 / Ctrl+点击）
+document.getElementById('files-content').addEventListener('contextmenu', (e) => {
+  _handleFileListRightClick(e, 'ctx');
+});
+
+// mouseup 事件兜底（macOS 触控板双指点按）
+document.getElementById('files-content').addEventListener('mouseup', (e) => {
+  if (e.button !== 2) return;
+  _handleFileListRightClick(e, 'mu');
+});
+
+// 隐藏文件列表右键菜单（复用全局 click 监听器）
+document.addEventListener('click', (e) => {
+  if (!fileContextMenu.classList.contains('hidden') && !fileContextMenu.contains(e.target)) {
+    fileContextMenu.classList.add('hidden');
+  }
+});
+
+// 文件列表右键菜单点击处理
+fileContextMenu.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || !fileContextMenuTarget) return;
+  const action = btn.dataset.action;
+  fileContextMenu.classList.add('hidden');
+  if (action === 'open-folder') window.markmate.openFolder(fileContextMenuTarget);
+  fileContextMenuTarget = null;
 });
 
 function updateFavoriteBtn() {
@@ -1331,6 +1429,23 @@ function isPagedPartialView() {
     && jsonlTotalLines > JSONL_PAGE_SIZE);
 }
 
+// 判断当前是否处于 JSONL 对话视图（不是 tree/code 视图）
+function isChatViewMode() {
+  return !!(currentCodeMode && currentCodeMode.lang === 'jsonl' && currentJsonView === 'chat');
+}
+
+// 将 chatEdits 合并到 jsonlCachedLines 后构建完整文件内容
+// 供保存/关闭等需要整文件回写的场景使用（与 saveChatEdits 共用合并逻辑）
+function buildJsonlContentFromEdits() {
+  if (!jsonlCachedLines) return getEditorContent();
+  const merged = jsonlCachedLines.slice();
+  for (const [cachedIdx, entry] of chatEdits.entries()) {
+    if (cachedIdx < 0 || cachedIdx >= merged.length) continue;
+    try { merged[cachedIdx] = JSON.stringify(entry); } catch (_) {}
+  }
+  return merged.join('\n') + '\n';
+}
+
 async function doAutoSave() {
   autoSaveTimer = null;
   if (!currentCodeMode && (!vditor || !vditorReady)) return;
@@ -1401,14 +1516,158 @@ function syncVditorFromSource() {
   syncingFromSource = false;
   markDirty(true);
   updateStats();
+  // Vditor setValue 不会触发 input 回调，手动刷新大纲
+  scheduleOutlineRefresh();
 }
 sourceEditor.addEventListener('input', () => {
   if (syncingFromVditor) return;
   markDirty(true);
   clearTimeout(sourceSyncTimer);
   sourceSyncTimer = setTimeout(() => { syncVditorFromSource(); }, 220);
+  // 源码面板输入也要刷新大纲（Vditor setValue 不会触发 input 回调，这里提前触发）
+  scheduleOutlineRefresh();
 });
 sourceEditor.addEventListener('blur', () => { clearTimeout(sourceSyncTimer); syncVditorFromSource(); });
+// 源码面板点击某行 → 编辑器滚动到对应位置
+sourceEditor.addEventListener('click', () => {
+  if (!sourceVisible) return;
+  const ed = getEditorScrollEl();
+  if (!ed) return;
+  const srcMax = sourceEditor.scrollHeight - sourceEditor.clientHeight;
+  if (srcMax <= 0) return;
+  const ratio = sourceEditor.scrollTop / srcMax;
+  const edMax = ed.scrollHeight - ed.clientHeight;
+  if (edMax <= 0) return;
+  _scrollSyncActive = true;
+  ed.scrollTop = Math.max(0, Math.min(ratio * edMax, edMax));
+  requestAnimationFrame(() => { _scrollSyncActive = false; });
+});
+
+// ========= 双窗格滚动同步 =========
+// 编辑器（Vditor）和源码面板（textarea）之间的按比例滚动同步
+let _scrollSyncActive = false;
+
+function getEditorScrollEl() {
+  // Vditor wysiwyg 模式：滚动容器是 pre.vditor-reset（overflow:auto）
+  const reset = document.querySelector('.vditor-reset');
+  if (reset && reset.scrollHeight > reset.clientHeight) return reset;
+  // Fallback：从 .vditor-reset 向上找第一个可滚动的祖先
+  if (!reset) return null;
+  let el = reset.parentElement;
+  while (el && el !== document.body) {
+    if (el.scrollHeight > el.clientHeight) {
+      const style = window.getComputedStyle(el);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') return el;
+    }
+    el = el.parentElement;
+  }
+  return reset; // 兜底
+}
+
+function syncScrollRatio(from, to) {
+  if (_scrollSyncActive) return;
+  const fromMax = from.scrollHeight - from.clientHeight;
+  if (fromMax <= 0) return;
+  const ratio = from.scrollTop / fromMax;
+  const toMax = to.scrollHeight - to.clientHeight;
+  if (toMax <= 0) return;
+  _scrollSyncActive = true;
+  to.scrollTop = Math.max(0, Math.min(ratio * toMax, toMax));
+  requestAnimationFrame(() => { _scrollSyncActive = false; });
+}
+
+let _scrollSyncInitDone = false;
+
+function updateOutlineActiveOnScroll() {
+  const tree = document.getElementById('outline-tree');
+  if (!tree) return;
+  const editorScroll = getEditorScrollEl();
+  if (!editorScroll) return;
+  const headings = editorScroll.querySelectorAll('h1[data-block], h2[data-block], h3[data-block], h4[data-block], h5[data-block], h6[data-block]');
+  if (!headings.length) return;
+  const scrollTop = editorScroll.scrollTop;
+  const contRect = editorScroll.getBoundingClientRect();
+  let current = null;
+  for (const h of headings) {
+    const hTop = h.getBoundingClientRect().top - contRect.top + scrollTop;
+    if (hTop <= scrollTop + 24) current = h;
+    else break;
+  }
+  if (!current) current = headings[0];
+  const activeId = current.id;
+  const items = tree.querySelectorAll('.ol-item');
+  let activeItem = null;
+  items.forEach(item => {
+    const isActive = item.dataset.id === activeId;
+    item.classList.toggle('active', isActive);
+    if (isActive && !activeItem) activeItem = item;
+  });
+  if (activeItem) {
+    activeItem.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+  }
+}
+
+function syncCaretToSource() {
+  if (!sourceVisible) return;
+  const ed = getEditorScrollEl();
+  const src = sourceEditor;
+  if (!ed || !src) return;
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+  if (!rect.height && !rect.width) return; // 没有有效选区
+  const edRect = ed.getBoundingClientRect();
+  const caretTopInDoc = rect.top - edRect.top + ed.scrollTop;
+  if (ed.scrollHeight <= 0) return;
+  const ratio = caretTopInDoc / ed.scrollHeight;
+  const srcMax = src.scrollHeight - src.clientHeight;
+  if (srcMax <= 0) return;
+  src.scrollTop = Math.max(0, Math.min(ratio * src.scrollHeight, srcMax));
+}
+
+function initScrollSync() {
+  // 源码面板 textarea 是固定 DOM，只绑定一次
+  if (!_scrollSyncInitDone) {
+    sourceEditor.addEventListener('scroll', () => {
+      if (!sourceVisible) return;
+      const ed = getEditorScrollEl();
+      if (ed) syncScrollRatio(sourceEditor, ed);
+    }, { passive: true });
+
+    // 编辑器光标变化/点击 → 同步源码面板滚动
+    let _selectionSyncTimer = null;
+    const syncIfInEditor = () => {
+      if (!vditorReady || currentCodeMode || !sourceVisible) return;
+      const vditorEl = document.getElementById('vditor');
+      if (!vditorEl || !vditorEl.contains(document.activeElement)) return;
+      clearTimeout(_selectionSyncTimer);
+      _selectionSyncTimer = setTimeout(() => {
+        if (sourceVisible) syncCaretToSource();
+      }, 60);
+    };
+    document.addEventListener('selectionchange', syncIfInEditor);
+    document.addEventListener('click', (e) => {
+      const vditorEl = document.getElementById('vditor');
+      if (vditorEl && vditorEl.contains(e.target)) syncIfInEditor();
+    }, true);
+
+    _scrollSyncInitDone = true;
+  }
+
+  // 编辑器滚动容器随 Vditor 重建而变化，每次重新查找绑定
+  // （旧 DOM 已销毁，不会累积监听器）
+  const editorScroll = getEditorScrollEl();
+  if (!editorScroll) return;
+  let _outlineScrollActive = false;
+  editorScroll.addEventListener('scroll', () => {
+    if (sourceVisible) syncScrollRatio(editorScroll, sourceEditor);
+    if (!_outlineScrollActive) {
+      _outlineScrollActive = true;
+      requestAnimationFrame(() => { _outlineScrollActive = false; updateOutlineActiveOnScroll(); });
+    }
+  }, { passive: true });
+}
 
 // ========= 主题 =========
 function applyEditorTheme() {
@@ -1439,7 +1698,12 @@ function toggleSource() {
   document.getElementById('source-resizer').classList.toggle('hidden', !sourceVisible);
   const btn = document.getElementById('source-toggle');
   if (btn) btn.classList.toggle('active', sourceVisible);
-  if (sourceVisible) syncSourceFromVditor(true);
+  if (sourceVisible) {
+    syncSourceFromVditor(true);
+    // 初始同步滚动位置：让源码面板的滚动位置与编辑器一致
+    const ed = getEditorScrollEl();
+    if (ed) syncScrollRatio(ed, sourceEditor);
+  }
 }
 
 // ========= 专注模式 =========
@@ -1807,13 +2071,21 @@ function switchJsonViewContent(view) {
 function computeTreeStringLimit() {
   const c = document.getElementById('json-tree-container');
   const W = (c && c.clientWidth) || 800;
-  // 每行非 value 开销：缩进(depth*18≈90) + toggle(16) + key(~60) + colon + type-tag(~38) + 展开按钮(~90) ≈ 240
-  const overhead = 240;
-  // 等宽 13px 字体：中文≈13px/字（用户数据以中文为主），取 13 保证 CJK 不被低估
-  // （此前用 11 低估中文宽度，导致全屏下预览仍横向溢出）
+  // 非 value 行内开销：缩进(depth*18≈90) + toggle(16) + 冒号+空格 + type-tag(~38) + 展开按钮(~90)
+  // key 宽度差异大（短如 "id"，长如 "recommendations[0].content"），取动态平均值避免两者都估不准
+  let avgKeyWidth = 60;
+  if (c) {
+    const keys = c.querySelectorAll('.json-key');
+    if (keys.length > 0) {
+      let sum = 0, count = 0;
+      const sampleN = Math.min(30, keys.length);
+      for (let i = 0; i < sampleN; i++) { sum += keys[i].offsetWidth; count++; }
+      avgKeyWidth = Math.round(sum / count);
+    }
+  }
+  const overhead = 90 + 16 + avgKeyWidth + 5 + 38 + 90;  // indent+toggle+key+colon+tag+expandBtn
   const charPx = 13;
   const n = Math.floor((W - overhead) / charPx);
-  // 下限 40（太短无意义）；上限 400（防巨长文本 DOM 节点过多，CSS 会兜底截断）
   return Math.max(40, Math.min(400, n));
 }
 
@@ -2486,7 +2758,7 @@ function loadCodeContent(value) {
 
 if (typeof Prism !== 'undefined') Prism.manual = true;
 const PRISM_LANG_MAP = { json: 'json', jsonl: 'json', xml: 'markup', yaml: 'yaml', yml: 'yaml' };
-const PRISM_MAX_SIZE = 300 * 1024;  // 超过 300KB 不做 Prism 高亮（避免大文件卡死主线程）
+const PRISM_MAX_SIZE = 150 * 1024;  // 超过 150KB 不做 Prism 高亮（避免大文件卡死主线程）
 
 function highlightCode() {
   if (!currentCodeMode || !codeEditor) return;
@@ -2664,23 +2936,57 @@ window.markmate.onConfirmClose(async () => {
   const action = await window.markmate.askCloseConfirm();
   if (action === 'cancel') { window.markmate.confirmCloseReply({ action: 'cancel' }); return; }
   if (action === 'discard') { window.markmate.confirmCloseReply({ action: 'discard' }); return; }
+
   // save: 优先保存对话标注修改
   if (hasChatEdits) {
     await saveChatEdits();
     if (chatEdits.size > 0) { window.markmate.confirmCloseReply({ action: 'cancel' }); return; }
     if (!tabs.some(t => t.dirty)) { window.markmate.confirmCloseReply({ action: 'discard' }); return; }
   }
-  // save: 保存当前 tab
-  const content = getEditorContent();
-  const res = await window.markmate.saveContent(content, false);
-  if (res.saved) {
-    markDirty(false);
-    if (res.path) {
-      currentFilePath = res.path;
-      const tab = getActiveTab();
-      if (tab) { tab.filePath = res.path; tab.displayName = res.path.split('/').pop(); renderTabBar(); }
-      statusFile.textContent = res.path.split('/').pop();
+
+  // save: 保存所有脏 tab（而非仅当前激活 tab，避免其他脏 tab 内容丢失）
+  let allSaved = true;
+  const originalTabId = activeTabId;
+  for (const dt of dirtyTabs) {
+    // 切换到该 tab 以获取最新编辑内容
+    if (dt.id !== activeTabId) await switchToTab(dt.id);
+
+    // 分页局部视图保护：codeEditor 仅含当前页，直接保存会覆盖整文件
+    if (isPagedPartialView() && currentJsonView === 'raw') {
+      const ok = await window.markmate.confirmOverwrite(
+        `当前为多页 JSONL（共 ${jsonlTotalLines} 条），原始视图只显示第 ${jsonlPage + 1} 页。\n` +
+        `保存会用当前页内容覆盖整个文件，其余页数据将丢失。\n\n` +
+        `如需编辑大文件，建议用「另存为」导出当前页，或用专业编辑器处理。`
+      );
+      if (!ok) { allSaved = false; break; }
     }
+
+    const content = isChatViewMode() ? buildJsonlContentFromEdits() : getEditorContent();
+    const res = await window.markmate.saveContent(content, false);
+    if (res.saved) {
+      dt.dirty = false;
+      dt.content = content;
+      if (res.path) {
+        dt.filePath = res.path;
+        if (dt.id === activeTabId) {
+          currentFilePath = res.path;
+          statusFile.textContent = res.path.split('/').pop();
+        }
+        dt.displayName = res.path.split('/').pop();
+      }
+    } else {
+      allSaved = false;
+      break;
+    }
+  }
+
+  // 切回原来的 tab
+  if (originalTabId !== activeTabId && getTabById(originalTabId)) {
+    await switchToTab(originalTabId);
+  }
+
+  if (allSaved) {
+    markDirty(false);
     window.markmate.confirmCloseReply({ action: 'discard' });
   } else {
     window.markmate.confirmCloseReply({ action: 'cancel' });
@@ -2794,7 +3100,7 @@ function renderQuickResults(query) {
 }
 function highlightQuickItem() {
   const items = qoResults.querySelectorAll('.quick-open-item');
-  items.forEach((el, i) => { const listIdx = Array.from(qoResults.querySelectorAll('.quick-open-item')).indexOf(el); el.classList.toggle('active', listIdx === quickOpenIndex); });
+  items.forEach((el, i) => { el.classList.toggle('active', i === quickOpenIndex); });
 }
 function openQuickItem(item) { if (!item || item.type === 'section') return; hideQuickOpen(); window.markmate.openFileByPath(item.path); }
 qoInput.addEventListener('input', () => renderQuickResults(qoInput.value));
@@ -2945,6 +3251,63 @@ if (styleTheme && styleTheme !== 'default') {
 markDirty(false);
 bindJsonViewerEvents();
 window.markmate.rendererReady();
+
+// ============ 版本升级（electron-updater 驱动）============
+let updateDownloaded = false;
+let updateDismissed = false;
+
+window.markmate.onUpdateStatus((info) => {
+  if (updateDismissed) return;
+  const banner = document.getElementById('update-banner');
+  const msgEl = document.getElementById('update-banner-msg');
+  const viewBtn = document.getElementById('update-banner-view');
+  const dismissBtn = document.getElementById('update-banner-dismiss');
+
+  switch (info.status) {
+    case 'checking':
+      // 不显示，静默检查
+      break;
+    case 'available':
+      if (!banner || !msgEl) return;
+      msgEl.textContent = `MarkMate ${info.version} 可用，要现在下载吗？`;
+      viewBtn.textContent = '下载更新';
+      viewBtn.disabled = false;
+      viewBtn.style.display = 'inline-block';
+      viewBtn.onclick = () => {
+        msgEl.textContent = '正在下载…';
+        viewBtn.disabled = true;
+        window.markmate.startDownloadUpdate();
+      };
+      banner.classList.remove('hidden');
+      dismissBtn.onclick = () => { banner.classList.add('hidden'); updateDismissed = true; };
+      break;
+    case 'downloading':
+      if (!banner || !msgEl) return;
+      const pct = info.percent ? Math.round(info.percent) : 0;
+      msgEl.textContent = `下载更新中… ${pct}%`;
+      viewBtn.style.display = 'none';
+      banner.classList.remove('hidden');
+      break;
+    case 'downloaded':
+      if (!banner || !msgEl) return;
+      updateDownloaded = true;
+      msgEl.textContent = '更新已就绪，立即重启后可体验新版。';
+      viewBtn.style.display = 'inline-block';
+      viewBtn.textContent = '立即重启';
+      viewBtn.disabled = false;
+      viewBtn.onclick = () => window.markmate.installUpdate();
+      banner.classList.remove('hidden');
+      dismissBtn.onclick = () => { banner.classList.add('hidden'); updateDismissed = true; };
+      break;
+    case 'up-to-date':
+    case 'error':
+      // 不出提示
+      break;
+  }
+});
+
+// 启动后延迟触发一次检查（避免影响启动体验）
+setTimeout(() => { window.markmate.checkUpdate().catch(() => {}); }, 3000);
 
 // ============ 文档内搜索 ============
 let findActive = false;

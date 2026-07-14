@@ -47,6 +47,12 @@ make_dmg () {
 
   echo "==> [$arch] 生成 DMG"
   rm -rf "$stage" "$raw" "$out"
+
+  # ad-hoc 签名：降低 macOS Gatekeeper 拦截等级
+  # 不签名 → "无法验证" 直接不让装；签名后 → "来自未识别开发者"，右键可打开
+  echo "    ad-hoc 签名..."
+  codesign --force --deep --sign - "$app" 2>/dev/null || echo "    （签名跳过）"
+
   mkdir -p "$stage"
   cp -R "$app" "$stage/"
   ln -s /Applications "$stage/Applications"   # 拖拽安装快捷方式

@@ -972,6 +972,37 @@ mark.mp-find-current {
 }
 #draft-banner button:hover { background: rgba(255,255,255,0.3); }
 
+/* ============ 版本升级提醒 banner ============ */
+#update-banner {
+  position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
+  background: #2e7d32; color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+  z-index: 1850;
+}
+#update-banner.hidden { display: none; }
+#update-banner button {
+  background: rgba(255,255,255,0.18);
+  border: none;
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+#update-banner button:hover { background: rgba(255,255,255,0.3); }
+#update-banner #update-banner-dismiss {
+  background: transparent;
+  font-size: 16px;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0.7;
+}
+#update-banner #update-banner-dismiss:hover { opacity: 1; background: transparent; }
+
 /* ============ 状态栏自动保存提示 ============ */
 #status-autosave {
   font-size: 11px;
@@ -1367,8 +1398,8 @@ body.dark #code-highlight code.language-json .token.punctuation { color: #d4d4d4
   color: var(--text);
 }
 
-/* ============ Tab 右键菜单 ============ */
-#tab-context-menu {
+/* ============ Tab / 文件列表 右键菜单 ============ */
+#tab-context-menu, #file-context-menu {
   position: fixed;
   z-index: 11000;
   background: var(--bg);
@@ -1379,8 +1410,8 @@ body.dark #code-highlight code.language-json .token.punctuation { color: #d4d4d4
   min-width: 180px;
   overflow: hidden;
 }
-#tab-context-menu.hidden { display: none; }
-#tab-context-menu button {
+#tab-context-menu.hidden, #file-context-menu.hidden { display: none; }
+#tab-context-menu button, #file-context-menu button {
   display: block;
   width: 100%;
   padding: 6px 16px;
@@ -1392,7 +1423,7 @@ body.dark #code-highlight code.language-json .token.punctuation { color: #d4d4d4
   cursor: pointer;
   white-space: nowrap;
 }
-#tab-context-menu button:hover {
+#tab-context-menu button:hover, #file-context-menu button:hover {
   background: var(--accent);
   color: #fff;
 }

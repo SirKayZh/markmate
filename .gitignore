@@ -4,6 +4,7 @@ release/
 .DS_Store
 build/icon.iconset/
 build/icon_1024.png
+build/markmate-demo.mp4
 npm-debug.log*
 .vscode/
 .idea/

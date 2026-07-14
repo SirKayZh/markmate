@@ -38,14 +38,13 @@
       "main.js",
       "preload.js",
       "src/**/*",
-      "node_modules/vditor/dist/**/*",
-      "node_modules/html-docx-js/dist/**/*",
-      "node_modules/prismjs/prism.js",
-      "node_modules/prismjs/themes/prism.css",
-      "node_modules/prismjs/components/prism-json.min.js",
-      "node_modules/prismjs/components/prism-yaml.min.js",
-      "node_modules/prismjs/components/prism-markup.min.js"
+      "node_modules/**/*"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "SirKayZh",
+      "repo": "markmate"
+    },
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
@@ -131,6 +130,7 @@
     "electron-builder": "^24.13.3"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "html-docx-js": "^0.3.1",
     "prismjs": "^1.30.0",
     "vditor": "^3.10.4"

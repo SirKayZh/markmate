@@ -27,7 +27,9 @@ function createDefaultContext() {
 function getWin(id) { return BrowserWindow.getAllWindows().find(w => w.id === id); }
 
 // ============ 创建窗口 ============
-let pendingOpenPath = null;
+// 仅用于"app 未就绪 + 无窗口"场景的全局临时变量；
+// 窗口已存在时，待打开路径存在对应 ctx.pendingOpenPath 上，避免多窗口竞态。
+let _pendingOpenPathGlobal = null;
 
 function createWindow(initialTab) {
   const win = new BrowserWindow({
@@ -72,13 +74,21 @@ function createWindow(initialTab) {
     const ctx = getContext(win.id);
     if (!ctx) return;
     if (ctx.allowClose) return;
-    if (!ctx.currentDirty) return;
+    // 不再用 ctx.currentDirty 做捷径判断——多 Tab 下单个 dirty 标志不反映全局。
+    // 始终走 confirm-close 流程，由渲染层根据所有 Tab 的脏状态决定。
     if (ctx.closingInProgress) { e.preventDefault(); return; }
     e.preventDefault();
     ctx.closingInProgress = true;
+    // 3 秒超时回退：渲染进程崩溃/挂起时强制关闭，防止窗口永久死锁
+    ctx._closeTimer = setTimeout(() => {
+      ctx.allowClose = true;
+      ctx.closingInProgress = false;
+      if (!win.isDestroyed()) win.close();
+    }, 3000);
     if (win.webContents) {
       win.webContents.send('confirm-close');
     } else {
+      clearTimeout(ctx._closeTimer);
       ctx.allowClose = true;
       ctx.closingInProgress = false;
       win.close();
@@ -179,7 +189,7 @@ async function openFileInWindow(win, fp) {
   if (!fp) return;
   const ctx = getContext(win.id);
   if (!ctx || !ctx.rendererReady) {
-    pendingOpenPath = fp;
+    if (ctx) ctx.pendingOpenPath = fp;  // 按窗口隔离，避免多窗口竞态
     if (!win && app.isReady()) createWindow();
     return;
   }
@@ -214,9 +224,9 @@ function openFile(fp) {
   } else if (BrowserWindow.getAllWindows().length > 0) {
     openFileInWindow(BrowserWindow.getAllWindows()[0], fp);
   } else {
-    pendingOpenPath = fp;
+    // 没有任何窗口时，临时记到全局；whenReady 回调创建窗口后消费
+    _pendingOpenPathGlobal = fp;
     if (app.isReady()) createWindow();
-    // else: whenReady 回调会自动 createWindow() 并消费 pendingOpenPath
   }
 }
 
@@ -226,7 +236,7 @@ function writeFile(fp, content, ctx) {
     ctx.currentFilePath = fp;
     setTitle(getWinByCtx(ctx), fp, false);
     app.addRecentDocument(fp);
-    clearDraftIfAny();
+    clearDraftIfAny(ctx);
     return;
   }
   const normalized = normalizeImagePaths(content, fp);
@@ -234,7 +244,7 @@ function writeFile(fp, content, ctx) {
   ctx.currentFilePath = fp;
   setTitle(getWinByCtx(ctx), fp, false);
   app.addRecentDocument(fp);
-  clearDraftIfAny();
+  clearDraftIfAny(ctx);
 }
 
 function currentCodeModeFromCtx(ctx) { return ctx ? ctx.currentCodeMode : null; }
@@ -352,7 +362,7 @@ ipcMain.handle('auto-save', async (event, { content }) => {
       snapshotVersion(ctx.currentFilePath, snapText);
       return { saved: true, autoSaved: true, path: ctx.currentFilePath };
     } else {
-      saveDraft(content);
+      saveDraft(content, ctx);
       return { saved: false, draft: true };
     }
   } catch (err) {
@@ -403,8 +413,17 @@ ipcMain.handle('list-versions', async (event, { filePath } = {}) => {
   } catch (_) { return []; }
 });
 
+// 安全校验：确保路径在 userData 内，防止路径穿越读取/删除任意文件
+function isPathInsideUserData(p) {
+  if (!p || typeof p !== 'string') return false;
+  const resolved = path.resolve(p);
+  const userDataPath = path.resolve(app.getPath('userData'));
+  return resolved.startsWith(userDataPath + path.sep);
+}
+
 ipcMain.handle('read-version', async (event, { versionPath }) => {
   const { ctx } = ctxFromEvent(event);
+  if (!isPathInsideUserData(versionPath)) return { ok: false, error: 'Invalid version path' };
   try {
     const raw = fs.readFileSync(versionPath, 'utf-8');
     let content;
@@ -425,7 +444,7 @@ ipcMain.handle('check-draft', async () => {
   try {
     const draftDir = getDraftDir();
     if (!fs.existsSync(draftDir)) return { has: false };
-    const files = fs.readdirSync(draftDir).filter(n => n.endsWith('.md'));
+    const files = fs.readdirSync(draftDir).filter(n => n.startsWith('unsaved-draft') && n.endsWith('.md'));
     if (!files.length) return { has: false };
     const items = files.map(n => {
       const full = path.join(draftDir, n);
@@ -441,6 +460,7 @@ ipcMain.handle('check-draft', async () => {
 });
 
 ipcMain.handle('discard-draft', async (event, { draftPath }) => {
+  if (!isPathInsideUserData(draftPath)) return { ok: false, error: 'Invalid draft path' };
   try { if (draftPath && fs.existsSync(draftPath)) fs.unlinkSync(draftPath); return { ok: true }; }
   catch (_) { return { ok: false }; }
 });
@@ -462,7 +482,10 @@ function readAppData() {
 }
 function writeAppData(data) {
   try {
-    fs.writeFileSync(APP_DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    // 原子写入：先写临时文件再 rename，避免写中断导致 JSON 文件损坏
+    const tmp = APP_DATA_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmp, APP_DATA_FILE);
   } catch (_) {}
 }
 // 首次启动时，如果 JSON 文件不存在但 localStorage 有数据（app:// origin 旧数据），
@@ -518,16 +541,21 @@ function snapshotVersion(fp, content) {
     }
   } catch (err) { console.error('[snapshot]', err); }
 }
-function saveDraft(content) {
+function draftFilename(winId) {
+  const suffix = winId && winId > 0 ? `-w${winId}` : '';
+  return `unsaved-draft${suffix}.md`;
+}
+function saveDraft(content, ctx) {
   try {
     const dir = getDraftDir();
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, 'unsaved-draft.md');
+    const winId = ctx ? getWinByCtx(ctx)?.id : 0;
+    const file = path.join(dir, draftFilename(winId));
     fs.writeFileSync(file, content, 'utf-8');
   } catch (err) { console.error('[draft]', err); }
 }
-function clearDraftIfAny() {
-  try { const file = path.join(getDraftDir(), 'unsaved-draft.md'); if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}
+function clearDraftIfAny(ctx) {
+  try { const winId = ctx ? getWinByCtx(ctx)?.id : 0; const file = path.join(getDraftDir(), draftFilename(winId)); if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}
 }
 
 // ============ 脏标记 / 关闭确认 ============
@@ -557,8 +585,11 @@ ipcMain.handle('ask-close-confirm', async (event) => {
 
 ipcMain.on('confirm-close-reply', (event, payload) => {
   const { ctx, win } = ctxFromEvent(event);
+  if (ctx) {
+    if (ctx._closeTimer) { clearTimeout(ctx._closeTimer); ctx._closeTimer = null; }
+    ctx.closingInProgress = false;
+  }
   const action = payload && payload.action;
-  if (ctx) ctx.closingInProgress = false;
   if (action === 'discard') {
     if (ctx) ctx.allowClose = true;
     if (win) win.close();
@@ -686,13 +717,18 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
       extraCss: `html,body{overflow:visible !important;}body{padding:30px 40px;}.vditor-reset{max-width:${baseWidth}px;margin:0 auto;}*{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}.vditor-reset pre{overflow:visible;white-space:pre-wrap;word-break:break-word;}`
     });
     const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml);
+    const EXPORT_PNG_TIMEOUT = 15000;  // 15 秒总超时，避免长文档导出永久挂起
+    const startedAt = Date.now();
+    function checkTimeout() { if (Date.now() - startedAt > EXPORT_PNG_TIMEOUT) throw new Error('导出超时（文档可能过长，建议改用 PDF 导出）'); }
     await expWin.loadURL(dataUrl);
     await new Promise(r => setTimeout(r, 400));
+    checkTimeout();
     const docSize = await expWin.webContents.executeJavaScript(`(() => { const b = document.body, d = document.documentElement; const imgs = Array.from(document.images || []); return Promise.all(imgs.map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = i.onerror = r; }))).then(() => ({ w: Math.max(b.scrollWidth, d.scrollWidth, b.clientWidth, d.clientWidth), h: Math.max(b.scrollHeight, d.scrollHeight, b.clientHeight, d.clientHeight) })); })()`);
     const targetW = Math.max(winWidth, Math.ceil(docSize.w));
     const targetH = Math.ceil(docSize.h) + 4;
     expWin.setContentSize(targetW, targetH);
     await new Promise(r => setTimeout(r, 350));
+    checkTimeout();
     const [actualW, actualH] = expWin.getContentSize();
     const fits = actualH >= targetH - 2;
     let buf;
@@ -704,8 +740,10 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
       console.warn('[export-png] window clamped, retry @1x');
       try { expWin.webContents.setZoomFactor(1); } catch (_) {}
       await new Promise(r => setTimeout(r, 150));
+      checkTimeout();
       expWin.setContentSize(targetW, targetH);
       await new Promise(r => setTimeout(r, 350));
+      checkTimeout();
       const [w2, h2] = expWin.getContentSize();
       if (h2 >= targetH - 2) {
         const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
@@ -716,8 +754,10 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
         for (const z of [0.7, 0.5, 0.35]) {
           try { expWin.webContents.setZoomFactor(z); } catch (_) { break; }
           await new Promise(r => setTimeout(r, 150));
+          checkTimeout();
           expWin.setContentSize(targetW, targetH);
           await new Promise(r => setTimeout(r, 350));
+          checkTimeout();
           const [wz, hz] = expWin.getContentSize();
           if (hz >= targetH - 2) {
             const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
@@ -893,11 +933,12 @@ ipcMain.on('renderer-ready', (event) => {
     delete ctx._initialTab;
   }
 
-  // 冷启动待打开文件
-  if (pendingOpenPath) {
-    const fp = pendingOpenPath;
-    pendingOpenPath = null;
-    openFileInWindow(win, fp);
+  // 冷启动待打开文件（两个来源：全局待定 / 本窗口 ctx 上待定）
+  const pendingPath = ctx.pendingOpenPath || _pendingOpenPathGlobal;
+  if (pendingPath) {
+    ctx.pendingOpenPath = null;
+    _pendingOpenPathGlobal = null;
+    openFileInWindow(win, pendingPath);
   }
 });
 
@@ -925,6 +966,12 @@ ipcMain.on('open-in-new-window', (event, info) => {
 ipcMain.on('reveal-file-in-finder', (event, filePath) => {
   if (!filePath || !fs.existsSync(filePath)) return;
   shell.showItemInFolder(filePath);
+});
+
+// ============ IPC: 在 Finder 中打开文件夹 ============
+ipcMain.on('open-folder', (event, dirPath) => {
+  if (!dirPath || !fs.existsSync(dirPath)) return;
+  shell.openPath(dirPath);
 });
 
 // ============ IPC: 目录列表 / 最近文件 ============
@@ -1004,11 +1051,16 @@ ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }
 
 // ============ 命令行参数 ============
 function fileFromArgv(argv) {
-  const args = argv.slice(app.isPackaged ? 1 : 2);
+  // 不硬编码 argv 索引（不同打包方式/启动方式下 argv 布局不同），
+  // 直接过滤出存在的文件路径
   const codeExtRe = new RegExp(`\\.(${CODE_EXT_LIST.join('|')})$`, 'i');
-  for (const a of args) {
+  for (const a of argv) {
     if (a.startsWith('-')) continue;
-    if ((/\.(md|markdown|mdown|txt)$/i.test(a) || codeExtRe.test(a)) && fs.existsSync(a)) return a;
+    if (a === '.' || a === __dirname || a === process.execPath) continue;
+    try { if (!fs.existsSync(a)) continue; } catch (_) { continue; }
+    // 排除明显的非文件路径（目录、Electron 内部路径）
+    try { if (fs.statSync(a).isDirectory()) continue; } catch (_) { continue; }
+    if ((/\.(md|markdown|mdown|txt)$/i.test(a) || codeExtRe.test(a))) return a;
   }
   return null;
 }
@@ -1020,6 +1072,55 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
+  // ============ 版本升级（electron-updater）============
+  // 懒加载，避免在 app ready 前访问 app.getVersion()
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  function sendToAll(channel, data) {
+    BrowserWindow.getAllWindows().forEach(w => {
+      if (!w.isDestroyed()) w.webContents.send(channel, data);
+    });
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    sendToAll('update-status', { status: 'checking' });
+  });
+  autoUpdater.on('update-available', (info) => {
+    sendToAll('update-status', { status: 'available', version: info.version });
+  });
+  autoUpdater.on('update-not-available', () => {
+    sendToAll('update-status', { status: 'up-to-date' });
+  });
+  autoUpdater.on('download-progress', (p) => {
+    sendToAll('update-status', { status: 'downloading', percent: p.percent, transferred: p.transferred, total: p.total });
+  });
+  autoUpdater.on('update-downloaded', () => {
+    sendToAll('update-status', { status: 'downloaded' });
+  });
+  autoUpdater.on('error', (err) => {
+    sendToAll('update-status', { status: 'error', error: err && err.message || String(err) });
+  });
+
+  ipcMain.handle('check-update', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      return { hasUpdate: !!(result && result.updateInfo && result.updateInfo.version !== app.getVersion()), version: result && result.updateInfo && result.updateInfo.version };
+    } catch (err) {
+      return { hasUpdate: false, error: err && err.message || String(err) };
+    }
+  });
+
+  ipcMain.on('start-download-update', () => {
+    autoUpdater.downloadUpdate().catch(() => {});
+  });
+
+  ipcMain.on('install-update', () => {
+    autoUpdater.quitAndInstall();
+  });
+
+  // ============ 自定义协议 ============
   protocol.handle('app', (request) => {
     const reqUrl = new URL(request.url);
     const relativePath = reqUrl.pathname.replace(/^\//, '');
@@ -1047,18 +1148,21 @@ app.whenReady().then(() => {
       let p = request.url.replace(/^mpmedia:\/\//i, '');
       p = decodeURI(p);
       if (!p.startsWith('/')) p = '/' + p;
-      const filePath = path.normalize(p);
-      if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif|mp4|webm|mp3|wav|ogg)$/i.test(filePath)) {
+      // path.resolve 解析 .. 并归一化为绝对路径，再校验在用户 home 目录内，防路径穿越
+      const resolved = path.resolve(p);
+      const homeDir = path.resolve(require('os').homedir());
+      if (!resolved.startsWith(homeDir + path.sep) && resolved !== homeDir) {
         return new Response('Forbidden', { status: 403 });
       }
-      const data = fs.readFileSync(filePath);
-      const ext = path.extname(filePath).toLowerCase();
+      if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i.test(resolved)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      const data = fs.readFileSync(resolved);
+      const ext = path.extname(resolved).toLowerCase();
       const mime = {
         '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
         '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
         '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.avif': 'image/avif',
-        '.mp4': 'video/mp4', '.webm': 'video/webm',
-        '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
       }[ext] || 'application/octet-stream';
       return new Response(data, { headers: { 'Content-Type': mime } });
     } catch (_) { return new Response('Not Found', { status: 404 }); }
@@ -1068,7 +1172,7 @@ app.whenReady().then(() => {
   buildMenu();
 
   const argFile = fileFromArgv(process.argv);
-  if (argFile) pendingOpenPath = argFile;
+  if (argFile) _pendingOpenPathGlobal = argFile;
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1079,7 +1183,8 @@ app.on('before-quit', (e) => {
   const wins = BrowserWindow.getAllWindows();
   for (const win of wins) {
     const ctx = getContext(win.id);
-    if (ctx && ctx.currentDirty && !ctx.allowClose) {
+    // 不再依赖 ctx.currentDirty（单文件脏标记），让 close 事件走 confirm-close 流程由渲染层判定
+    if (ctx && !ctx.allowClose) {
       e.preventDefault();
       win.close();
       return;

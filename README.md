@@ -1,13 +1,13 @@
 # MarkMate ⚡
 
-> **The free, open-source Typora alternative.** A lightning-fast WYSIWYG Markdown editor for macOS & Windows — write in peace, navigate with ease, never lose your work. Also opens JSON, YAML, XML, and JSONL with syntax highlighting.
+> **Your AI files deserve better than a text editor.** MarkMate is the **LLM-era file workbench** — one clean desktop app that handles the three files you touch every day: **Markdown** (specs, docs, prompts), **JSON** (configs, outputs), and **JSONL** (datasets, logs). WYSIWYG editing, conversation bubble browsing, one-click formatting, batch annotation, and multi-format export — all in a beautiful, local-first UI. macOS & Windows.
 >
-> **免费开源的 Typora 替代品。** 一款轻快专注的 WYSIWYG Markdown 编辑器，macOS & Windows 双平台。所见即所得 + 大纲导航 + 永不丢稿。还能直接查看 JSON/YAML/XML/JSONL。
+> **你的 AI 文件，不该只用文本编辑器打开。** MarkMate 是为大模型工作流量身打造的桌面文件编辑器。一个应用打通 MD 写作、JSONL 数据浏览、JSON 修复、数据标注、多格式导出全链路。
 
 ![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows-blue)
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![release](https://img.shields.io/badge/release-v1.6.1-3b82f6)
+![release](https://img.shields.io/badge/release-v2.0.0-3b82f6)
 
 **English** · [简体中文](README.zh-CN.md) · [🌐 Documentation](https://sirkyzh.github.io/markmate)
 
@@ -25,104 +25,124 @@
 
 ---
 
-> 📸 **Screenshots coming soon** — we're preparing high-quality UI screenshots. In the meantime, check out the [feature list](#-features) below or [try it yourself](https://github.com/SirKayZh/markmate/releases).
+### 🎯 One Editor, Three File Types
+
+<p align="center">
+  <img src="build/screenshots/hero-macos-light.png" width="360" alt="MarkMate editing interface">&nbsp;
+  <img src="build/screenshots/jsonl-conversation.png" width="360" alt="JSONL conversation bubble view">
+</p>
+
+<p align="center">
+  <em>Write beautiful Markdown (left) · Browse JSONL datasets as chat bubbles (right)</em>
+</p>
+
+<p align="center">
+  <img src="build/screenshots/json-syntax-error.png" width="360" alt="JSON parse error with line/column fix">&nbsp;
+  <img src="build/screenshots/annotation-editing.png" width="360" alt="Batch annotation editing">
+</p>
+
+<p align="center">
+  <em>Fix broken JSON with line/column pinpointing (left) · Batch-annotate training data inline (right)</em>
+</p>
+
+---
+
+## ✨ Why MarkMate?
+
+MarkMate is built for the **modern AI workflow**. You're not just writing docs anymore — you're browsing datasets, fixing broken JSON, annotating training data, and exporting results. Most tools force you to juggle 3–4 different apps. MarkMate puts it all in one place.
+
+| | **MarkMate** | **Typora** | **VS Code** |
+|---|:---:|:---:|:---:|
+| **Price** | ✅ Free & Open Source | ❌ $14.99 | ✅ Free |
+| **WYSIWYG Markdown** | ✅ Instant render | ✅ Instant render | ❌ Split preview |
+| **macOS + Windows** | ✅ Both | ✅ Both | ✅ Both |
+| **JSONL Dataset Viewer** | ✅ Chat bubbles + stats | ❌ None | ❌ |
+| **JSON / YAML / XML Editor** | ✅ Syntax highlight + format | ❌ None | ✅ |
+| **Batch Annotation** | ✅ Inline editing + batch save | ❌ None | ❌ |
+| **PDF / HTML / Word / PNG Export** | ✅ One-click | ✅ | ❌ Plugins needed |
+| **Version Snapshots** | ✅ 10 per file | ❌ None | ✅ (via Git) |
+| **Built-in File Manager** | ✅ Favorites / Recent / Folder | ❌ None | ✅ Explorer |
+| **Auto-update** | ✅ Built-in | ❌ | ❌ |
+| **Privacy (local-first)** | ✅ No uploads | ✅ | ✅ |
+| **Open Source** | ✅ MIT | ❌ Proprietary | ✅ MIT |
+| **Startup Speed** | ✅ Fast | ✅ Fast | ❌ Slower |
 
 ---
 
 ## ✨ Features
 
-### ✍️ Writing Experience
+### ✍️ Markdown Writing
 
 - **WYSIWYG editing** — type Markdown, see it rendered instantly (Vditor IR mode, just like Typora)
 - **Focus mode** (⌘⇧F) — dims everything except the current paragraph, zero distractions
 - **Typewriter mode** (⌘⇧T) — keeps the cursor vertically centered for long writing sessions
 - **Rich content** — headings, bold/italic/strikethrough/highlight, lists, blockquotes, tables, code with line numbers, KaTeX math, task lists, footnotes, auto-generated `[toc]`
+- **5 style presets** — Default · GitHub · Night · Sepia (warm paper) · Slate (⌘⇧/ cycles); auto-adjusts light/dark base
+- **Three-column layout** — Outline ↔ Editor ↔ Source; drag any divider to resize
+- **Source panel** (⌘E) — side-by-side rendered view + raw Markdown with **bidirectional scroll sync**
+- **Outline tree** (⌘\) — collapsible heading tree with auto-highlight as you scroll; click to jump with toast + flash feedback
 
-### 🧭 Navigation & File Management
+### 📂 File Management
 
-- **Outline tree** (⌘\) — multi-level collapsible sidebar with persistent fold state; click any heading to jump with visual feedback (toast + flash highlight)
-- **File manager panel** — three zones in one sidebar: ⭐ Favorites · 🕐 Recent (up to 10) · 📂 Current Folder; collapsible sections with keyword search
-- **Quick Open** (⌘P) — fuzzy-search across favorites & recent files; keyboard-navigable results
-- **Favorites** (⌘D) — star frequently-used files for instant access; one-click toggle
-- **Document search** (⌘F) — find in document with real-time highlighting, prev/next navigation, match counter
+- **File manager panel** — ⭐ Favorites · 🕐 Recent (up to 10) · 📂 Current Folder; collapsible sections with keyword search
+- **Quick Open** (⌘P) — fuzzy-search across favorites & recent files
+- **Favorites** (⌘D) — star frequently-used files; one-click toggle
+- **Smart folder listing** — sidebar shows all files (not just `.md`); right-click folder to open in Finder
+- **Document search** (⌘F) — real-time highlighting, prev/next navigation, match counter
+
+### 🧠 JSONL Dataset Viewer & Editor
+
+- **Conversation bubble rendering** — auto-detects OpenAI Messages, Alpaca, ShareGPT formats; role-colored bubbles (`system` gray · `user` blue · `assistant` green · `tool` yellow)
+- **Dataset statistics** — turn count, role distribution, token estimation at a glance
+- **Inline annotation editing** — click any bubble to edit; changed rows marked with yellow badge; batch-save all edits with one click
+- **Save & next page** — finish editing one page, save and auto-advance; ideal for batch annotation workflows
+- **JSON parse errors with line/column** — broken JSON shows red error banner with exact location; one-click jump to fix
+
+### 💻 JSON / YAML / XML Viewer & Editor
+
+- **Syntax highlighting** — Prism.js-powered with dual light/dark theme color schemes
+- **One-click format** — ⌥⌘L to beautify JSON/JSONL/XML
+- **File type icons** — distinct emoji badges per format (📝 .md · 📊 .json · 📋 .xml · ⚙️ .yml/.yaml)
+- **Zero overhead** — files stay as plain `.json` / `.xml` / `.yaml` on disk; no extra metadata
 
 ### 🛡️ Never Lose Your Work
 
 - **Auto-save** — saves to disk 1.5 s after you stop typing; status bar shows timestamp
-- **Version history** — each auto-save creates a snapshot (up to 10 per file); browse, preview, restore, or copy any version
-- **Draft recovery** — unsaved documents are backed up as drafts; next launch shows a recovery banner
-- **Close confirmation** — native macOS dialog when closing with unsaved changes (Save / Don't Save / Cancel)
+- **Version history** — up to 10 snapshots per file; browse, preview, restore, or copy any version
+- **Draft recovery** — unsaved documents backed up; recovery banner on next launch
+- **Close confirmation** — native dialog when closing with unsaved changes
 
-### 🎨 Themes & Layout
+### 📤 Multi-format Export
 
-- **Appearance mode** — Light · Dark · Follow System (⌘/ cycles); syncs with macOS in real time
-- **5 style presets** — Default · GitHub · Night · Sepia (warm paper) · Slate (⌘⇧/ cycles); each auto-adjusts the light/dark base
-- **Three-column layout** — Outline ↔ Editor ↔ Source; drag any divider to resize
-- **Source panel** (⌘E) — side-by-side rendered view + raw Markdown with bidirectional sync; edit either side
-
-### 🖼️ Images & Extended Syntax
-
-- **Image drag & paste** — drop or paste images into the editor; they auto-save to an `assets/` folder beside your document
-- **Reveal images folder** — File → Show Images Folder in Finder
-- **Extended Markdown** — `==highlight==` · `[^1]` footnotes · `[toc]` directory · CJK auto-spacing · term auto-correction
-- **Code line numbers** — syntax-highlighted code blocks show line numbers on the left
-
-### 💻 Lightweight Code & Config Viewer (v1.5.0+)
-
-- **JSON / XML / YAML / JSONL** — open these files directly in MarkMate as a lightweight viewer/editor
-- **Syntax highlighting** — Prism.js-powered highlighting with dual light/dark theme color schemes
-- **One-click format** — ⌥⌘L to beautify JSON/JSONL/XML; dedicated toolbar button with disabled gray-out hints
-- **File type icons** — sidebar shows distinct emoji badges per format (📝 .md · 📊 .json · 📋 .xml · ⚙️ .yml/.yaml)
-- **Outline auto-clears** — when viewing code/config files, the outline panel shows a context-aware message
-- **No overhead** — code files stay as plain `.json` / `.xml` / `.yaml` on disk; no extra markers or metadata
-
-### 📤 Multi-format Export (v1.4.0+)
-
-- **PDF** (⌘⇧P) — page-break friendly, zero extra dependencies (uses Electron's built-in `printToPDF`)
-- **HTML** — single-file with full styling, perfect for email or upload
+- **PDF** (⌘⇧P) — page-break friendly, zero extra dependencies
+- **HTML** — single-file with full styling
 - **Word (.docx)** — opens natively in Word/Pages/WPS
-- **Long image (PNG)** — 2x DPI snapshot, ideal for social sharing
-- All formats preserve fonts, code blocks, tables, blockquotes and responsive images
+- **Long image (PNG)** — 2x DPI snapshot for social sharing
+
+<p align="center">
+  <img src="build/screenshots/export-formats.png" width="720" alt="Export to PDF/HTML/Word/PNG">
+</p>
 
 ### 🍎 macOS Integration (also runs on Windows)
 
-- **Drag & drop to open** — drag `.md` files onto the window, Dock icon, or even onto a closed app
-- **File association** — registered handler for `.md` `.markdown` `.mdown` `.mkd` `.mdtext` `.txt` `.xml` `.json` `.jsonl` `.yml` `.yaml`; set MarkMate as your default editor in Finder
+- **Drag & drop to open** — drag files onto the window, Dock icon, or closed app
+- **File association** — registered handler for `.md` `.json` `.jsonl` `.yml` `.yaml` `.xml` `.txt`; set as default in Finder
 - **Native feel** — inset traffic lights, document-dirty dot, recent files menu, word count in status bar
-- **Privacy-aware** — won't trigger macOS "access Desktop/Downloads" permission dialogs on first use
-
----
-
----
-
-## 🤔 Why MarkMate?
-
-| | **MarkMate** | **Typora** | **VS Code** |
-|---|:---:|:---:|:---:|
-| **Price** | ✅ Free & Open Source | ❌ $14.99 | ✅ Free |
-| **WYSIWYG Editing** | ✅ Instant render | ✅ Instant render | ❌ Split preview |
-| **macOS + Windows** | ✅ Both | ✅ Both | ✅ Both |
-| **Built-in File Manager** | ✅ Favorites / Recent / Folder | ❌ None | ✅ Explorer |
-| **Version Snapshots** | ✅ 10 per file | ❌ None | ✅ (via Git) |
-| **JSON / YAML / XML Viewer** | ✅ Syntax highlight + format | ❌ None | ✅ |
-| **PDF / HTML / Word Export** | ✅ One-click | ✅ | ❌ Plugins needed |
-| **Startup Speed** | ✅ Fast | ✅ Fast | ❌ Slower |
-| **Privacy (local-first)** | ✅ No uploads | ✅ | ✅ |
-| **Open Source** | ✅ MIT | ❌ Proprietary | ✅ MIT |
+- **Auto-update** — built-in version check via GitHub Releases; one-click download + restart (v2.0.0+)
 
 ---
 
 ## 📦 Install
 
-Download the latest release from the [Releases](https://github.com/SirKayZh/markmate/releases) page:
+Download from [Releases](https://github.com/SirKayZh/markmate/releases):
 
 **macOS:**
-- Apple Silicon (M1/M2/M3/M4…): `MarkMate-1.6.1-arm64.dmg`
-- Intel: `MarkMate-1.6.1-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkMate-2.0.0-arm64.dmg`
+- Intel: `MarkMate-2.0.0-x64.dmg`
 
 **Windows:**
-- `MarkMate-1.6.1-x64-setup.exe` — NSIS installer (recommended)
-- `MarkMate-1.6.1-x64-portable.exe` — standalone, no install needed
+- `MarkMate-2.0.0-x64-setup.exe` — NSIS installer (recommended)
+- `MarkMate-2.0.0-x64-portable.exe` — standalone, no install needed
 
 > The app is **not code-signed / notarized** on either platform.
 >
@@ -132,11 +152,9 @@ Download the latest release from the [Releases](https://github.com/SirKayZh/mark
 
 ### Set as Default Editor
 
-**macOS:** right-click any `.md` file in Finder → **Open With** → choose **MarkMate**. To make it permanent, select **Always Open With** or set it in **Get Info**.
+**macOS:** right-click `.md` → **Open With** → **MarkMate** → **Always Open With**.
 
-**Windows:** right-click any `.md` file → **Open with** → choose **MarkMate** → **Always use this app**.
-
-MarkMate also natively opens `.txt` files.
+**Windows:** right-click `.md` → **Open with** → **MarkMate** → **Always use this app**.
 
 ---
 
@@ -181,7 +199,7 @@ npm run release:minor  # bump minor + build + commit + tag
 npm run release:major  # bump major + build + commit + tag
 ```
 
-> **macOS note**: on Apple Silicon, `electron-builder`'s internal `hdiutil` DMG step may fail due to macOS sandbox restrictions on auto-mounting volumes. The project's build script uses `hdiutil makehybrid` + `convert` as a workaround. Windows builds work cross-platform from macOS (electron-builder auto-downloads Wine + NSIS).
+> **macOS note**: on Apple Silicon, `electron-builder`'s internal `hdiutil` DMG step may fail due to macOS sandbox restrictions. The project's build script uses `hdiutil makehybrid` + `convert` as a workaround. Windows builds work cross-platform from macOS (electron-builder auto-downloads Wine + NSIS).
 
 ---
 
@@ -189,26 +207,24 @@ npm run release:major  # bump major + build + commit + tag
 
 - **[Electron](https://www.electronjs.org/) 31** — cross-platform desktop shell (macOS + Windows)
 - **[Vditor](https://github.com/Vanessa219/vditor) 3** — Markdown IR (instant rendering) engine
-- Main process `main.js` (menu / file IO / auto-save / version snapshots) + `preload.js` (secure contextBridge IPC) + `src/` (UI)
+- `main.js` (menu / file IO / auto-save / version snapshots) + `preload.js` (contextBridge IPC) + `src/` (UI)
 
 ---
 
 ## 🔒 Privacy
 
-MarkMate is a **local-first** editor — your documents never leave your computer.
+MarkMate is **local-first** — your documents never leave your computer.
 
 - No document content is ever uploaded to any server.
 - No telemetry, no analytics, no tracking in the current version.
-- Future versions may offer **opt-in** anonymous usage stats (file type distribution, export counts, crash reports) with a clear consent dialog — you can decline or disable it at any time.
+- Future versions may offer **opt-in** anonymous usage stats with a clear consent dialog.
 - Full privacy policy: [sirkyzh.github.io/markmate/privacy](https://sirkyzh.github.io/markmate/privacy)
 
 ## 💬 Feedback & Community
 
-Your feedback shapes MarkMate's future:
-
-- 🐛 [Report a bug / Request a feature](https://github.com/SirKayZh/markmate/issues/new) (GitHub Issues)
-- 📝 [Fill out the feedback survey](https://sirkyzh.github.io/markmate/feedback) (8 questions, 2 min)
-- 💡 [Join the discussion](https://github.com/SirKayZh/markmate/discussions) (GitHub Discussions)
+- 🐛 [Report a bug / Request a feature](https://github.com/SirKayZh/markmate/issues/new)
+- 📝 [Fill out the feedback survey](https://sirkyzh.github.io/markmate/feedback)
+- 💡 [Join the discussion](https://github.com/SirKayZh/markmate/discussions)
 - 🌐 [Visit documentation site](https://sirkyzh.github.io/markmate)
 
 ---
@@ -222,6 +238,9 @@ Issues and PRs are welcome! Ideas for the roadmap:
 - [x] PDF / HTML / Word / Long image export (v1.4.0)
 - [x] Windows support (v1.4.1)
 - [x] Code / config file viewer with syntax highlighting (v1.5.0)
+- [x] JSONL dataset viewer with conversation bubbles (v2.0.0)
+- [x] Inline annotation editing for JSONL datasets (v2.0.0)
+- [x] Auto-update via GitHub Releases (v2.0.0)
 - [ ] Vim key bindings
 
 ---

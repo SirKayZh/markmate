@@ -93,8 +93,15 @@ contextBridge.exposeInMainWorld('markmate', {
   onLoadInitialTab: (cb) => ipcRenderer.on('load-initial-tab', (e, data) => cb(data)),
   // 在文件夹中显示文件
   revealFileInFinder: (filePath) => ipcRenderer.send('reveal-file-in-finder', filePath),
+  // 在 Finder 中打开文件夹
+  openFolder: (dirPath) => ipcRenderer.send('open-folder', dirPath),
   // 持久化数据：渲染进程同步到主进程 JSON 文件
   syncAppData: (key, items) => ipcRenderer.send('sync-app-data', { key, items }),
   // 持久化数据：渲染进程从主进程 JSON 文件读取
   readAppData: () => ipcRenderer.invoke('read-app-data'),
+  // 版本升级（electron-updater）
+  checkUpdate: () => ipcRenderer.invoke('check-update'),
+  onUpdateStatus: (cb) => ipcRenderer.on('update-status', (e, data) => cb(data)),
+  startDownloadUpdate: () => ipcRenderer.send('start-download-update'),
+  installUpdate: () => ipcRenderer.send('install-update'),
 });
