@@ -9,7 +9,9 @@
 
 ---
 
-## [2.0.0] - 2026-07-12
+---
+
+## [2.0.0] - 2026-07-14
 
 ### 新增 Added
 - **支持 OpenAI Messages 格式数据集对话视图**：现可识别 `{"messages":[{"role","content"}]}` 这一业界通用的微调/标注格式（OpenAI fine-tuning、vLLM 等），自动进入对话气泡视图，按 `system / user / assistant / tool` 角色着色展示，并支持点选编辑、统计（轮次/角色分布/Token）。此前只支持 Alpaca 与 ShareGPT，messages 格式会退化成树形且被截断看不全。
@@ -43,6 +45,15 @@
   - 🔵 **`open-file` 安全守卫**：已有 `app.isReady()` 判断（经审查，无 race condition）。
 - **JSONL 格式化读取旧文件内容**（Batch4 C06 预存 Bug）：在 JSONL 的树或对话视图下按格式化快捷键（⌥⌘L），`codeEditor.value` 仍存留上一个代码文件（如 XML）的旧内容，导致格式化用错源数据。现在进入格式化前先用 `jsonlEntries` 重新填充 `codeEditor`，确保源数据正确。
 - 对话视图有未保存标注编辑时点「导出」，导出内容现在包含这些未保存修改（所见即所得），此前会导出旧内容。
+- **多 Tab 关闭数据丢失**：关闭窗口/退出时遍历保存所有脏 Tab（而非仅当前激活 Tab），避免其他 Tab 修改静默丢失。
+- **切到干净 Tab 后关窗跳过确认**：移除 main.js `close` 事件的 `ctx.currentDirty` 捷径，始终走 `confirm-close` 流程由渲染层根据所有 Tab 脏状态判定。
+- **多窗口草稿互相覆盖**：草稿文件名加入窗口 ID 后缀，多窗口同时编辑互不踩踏。
+- **分页 JSONL raw 视图关窗覆盖整文件**：关闭确认流程加入 `confirmOverwrite` 保护。
+- **`fileFromArgv` 健壮性**：改为遍历全 argv 找存在的文件路径，兼容不同打包启动方式。
+- **`export-png` 超时兜底**：加入 15s 总超时与每步 `checkTimeout`。
+- **`closeOtherTabs/closeRightTabs`**：跳过脏 Tab 时给 toast 提示保留数量。
+- 三个功能段补专属 README 截图：文件管理、JSON/YAML/XML 查看器、历史版本。
+- 下载页 `download.html` 与首页 `index.html` 版本号、文件名、大小全部更新至 v2.0.0。
 
 ---
 
