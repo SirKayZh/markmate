@@ -90,6 +90,10 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 - **智能文件列表**：当前文件夹显示所有文件（不限于 `.md`）；右键文件夹打开 Finder
 - **文档内搜索**（⌘F）：实时高亮所有匹配，上/下一个跳转，显示匹配计数
 
+<p align="center">
+  <img src="build/screenshots/file-manager.png" width="720" alt="文件管理侧栏：收藏夹、最近打开、当前文件夹">
+</p>
+
 ### 🧠 JSONL 数据集查看与编辑
 
 - **对话气泡渲染**：自动识别 OpenAI Messages、Alpaca、ShareGPT 三种格式；角色着色气泡（`system` 灰色 · `user` 蓝色 · `assistant` 绿色 · `tool` 黄色）
@@ -105,12 +109,20 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 - **文件类型图标**：按格式显示不同 emoji 徽标（📝 .md · 📊 .json · 📋 .xml · ⚙️ .yml/.yaml）
 - **零开销**：磁盘上仍是纯净的 `.json` / `.xml` / `.yaml` 文件，无任何额外标记
 
+<p align="center">
+  <img src="build/screenshots/json-viewer.png" width="720" alt="JSON 查看器 Prism 语法高亮">
+</p>
+
 ### 🛡️ 永不丢稿
 
 - **自动保存**：停止输入 1.5 秒后自动落盘，状态栏实时显示
 - **历史版本**：每次自动保存打快照（每文件最多 10 个），可浏览、预览、一键恢复或复制
 - **草稿恢复**：未命名文档意外退出后下次启动自动弹出恢复提示
 - **关闭确认**：有未保存改动时弹出原生对话框（保存 / 不保存 / 取消）
+
+<p align="center">
+  <img src="build/screenshots/version-history.png" width="720" alt="历史版本对话框：时间线 + 内容预览">
+</p>
 
 ### 📤 多格式导出
 

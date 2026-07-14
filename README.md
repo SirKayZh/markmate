@@ -90,6 +90,10 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 - **Smart folder listing** — sidebar shows all files (not just `.md`); right-click folder to open in Finder
 - **Document search** (⌘F) — real-time highlighting, prev/next navigation, match counter
 
+<p align="center">
+  <img src="build/screenshots/file-manager.png" width="720" alt="File manager sidebar with favorites, recent files, and current folder">
+</p>
+
 ### 🧠 JSONL Dataset Viewer & Editor
 
 - **Conversation bubble rendering** — auto-detects OpenAI Messages, Alpaca, ShareGPT formats; role-colored bubbles (`system` gray · `user` blue · `assistant` green · `tool` yellow)
@@ -105,12 +109,20 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 - **File type icons** — distinct emoji badges per format (📝 .md · 📊 .json · 📋 .xml · ⚙️ .yml/.yaml)
 - **Zero overhead** — files stay as plain `.json` / `.xml` / `.yaml` on disk; no extra metadata
 
+<p align="center">
+  <img src="build/screenshots/json-viewer.png" width="720" alt="JSON viewer with Prism syntax highlighting">
+</p>
+
 ### 🛡️ Never Lose Your Work
 
 - **Auto-save** — saves to disk 1.5 s after you stop typing; status bar shows timestamp
 - **Version history** — up to 10 snapshots per file; browse, preview, restore, or copy any version
 - **Draft recovery** — unsaved documents backed up; recovery banner on next launch
 - **Close confirmation** — native dialog when closing with unsaved changes
+
+<p align="center">
+  <img src="build/screenshots/version-history.png" width="720" alt="Version history dialog with timeline and preview">
+</p>
 
 ### 📤 Multi-format Export
 
