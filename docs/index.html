@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MarkMate — 免费开源的 WYSIWYG Markdown 编辑器 | macOS & Windows</title>
-  <meta name="description" content="MarkMate 是一款轻快专注的所见即所得 Markdown 编辑器，支持 macOS 与 Windows。实时预览、大纲导航、自动保存、PDF/HTML/Word 导出、JSON/YAML/XML 查看器。Typora 的免费替代品。">
-  <meta name="keywords" content="Markdown编辑器, WYSIWYG Markdown编辑器, Typora替代, macOS Markdown编辑器, Windows Markdown编辑器, Markdown导出PDF, JSON查看器, YAML查看器, 免费Markdown编辑器, 开源Markdown编辑器, 写作工具, 笔记工具">
+  <title>MarkMate — 大模型时代文件编辑器 | macOS & Windows</title>
+  <meta name="description" content="MarkMate 是为大模型工作流量身打造的桌面文件编辑器。一个应用打通 Markdown 写作、JSONL 数据浏览、JSON 修复、批量标注、多格式导出全链路。免费开源，macOS & Windows。">
+  <meta name="keywords" content="Markdown编辑器, JSONL查看器, 数据集标注, JSON/YAML/XML, WYSIWYG编辑器, Typora替代, macOS编辑器, Windows编辑器, 大模型工具, 开源编辑器">
   <meta name="author" content="MarkMate Contributors">
-  <meta property="og:title" content="MarkMate — 免费开源的 WYSIWYG Markdown 编辑器">
-  <meta property="og:description" content="轻快专注的所见即所得 Markdown 编辑器，macOS & Windows 双平台，Typora 的免费替代品。">
+  <meta property="og:title" content="MarkMate — 大模型时代文件编辑器">
+  <meta property="og:description" content="一个应用打通 MD 写作、JSONL 浏览、JSON 修复、数据标注、多格式导出全链路。">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://sirkyzh.github.io/markmate">
   <meta name="twitter:card" content="summary">
@@ -61,8 +61,9 @@
     <img src="images/icon.png" alt="MarkMate" class="hero-icon">
     <h1>MarkMate ⚡</h1>
     <p class="subtitle">
-      轻快专注的 WYSIWYG Markdown 编辑器 — 所见即所得 + 强大导航 + 永不丢稿。<br>
-      <strong>Typora 的免费替代品</strong>，macOS & Windows 双平台，本地文件永远属于你。
+      为大模型工作流量身打造的桌面文件编辑器 —<br>
+      <strong>Markdown 写作 + JSONL 数据浏览 + JSON 修复 + 批量标注 + 多格式导出</strong>，一个应用全搞定。<br>
+      macOS & Windows 双平台，免费开源，本地文件永远属于你。
     </p>
     <div class="hero-actions">
       <a href="download.html" class="btn btn-primary btn-lg">⬇ 下载 MarkMate v2.0.0</a>
@@ -83,33 +84,48 @@
     <div class="features">
       <div class="feature-card">
         <span class="icon">✍️</span>
-        <h3>所见即所得编辑</h3>
-        <p>Vditor IR 即时渲染，打字即预览，体验如 Typora。专注模式 + 打字机模式，沉浸写作。</p>
+        <h3>所见即所得 Markdown</h3>
+        <p>Vditor IR 即时渲染，打字即预览。专注模式 + 打字机模式 + 5 套排版主题，沉浸写作。</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">💬</span>
+        <h3>JSONL 对话视图</h3>
+        <p>自动识别 OpenAI / Alpaca / ShareGPT 格式，角色着色气泡（system·user·assistant·tool）。统计面板一眼看清轮次与 Token。</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">🏷️</span>
+        <h3>批量标注编辑</h3>
+        <p>点击气泡直接改，攒多了一起保存。翻页不丢编辑，失败条目红框高亮定位。</p>
       </div>
       <div class="feature-card">
         <span class="icon">🧭</span>
-        <h3>智能导航</h3>
-        <p>多级大纲树 + 文件管理面板（收藏/最近/当前文件夹）。⌘P 快速打开，模糊搜索秒开文件。</p>
+        <h3>多 Tab + 文件管理</h3>
+        <p>⌘T 新建 / ⌘W 关闭 / ⌘1-9 切换。侧栏收藏夹 + 最近打开 + 当前文件夹，⌘P 快速打开。</p>
       </div>
       <div class="feature-card">
-        <span class="icon">🛡️</span>
-        <h3>永不丢稿</h3>
-        <p>1.5s 防抖自动保存 + 每文件 10 个历史快照 + 崩溃恢复。未保存关闭时弹窗确认，三重保险。</p>
+        <span class="icon">💻</span>
+        <h3>JSON / YAML / XML</h3>
+        <p>Prism.js 语法高亮，⌥⌘L 一键格式化。可折叠 JSON 树视图 + 大文件异步 Worker 解析。JSON 报错精准定位到行列。</p>
       </div>
       <div class="feature-card">
         <span class="icon">📤</span>
         <h3>多格式导出</h3>
-        <p>一键导出 PDF / HTML / Word（.docx）/ 长图 PNG。保留字体、代码块、表格、图片，零外部依赖。</p>
+        <p>一键导出 PDF / HTML / Word（.docx）/ 长图 PNG。保留字体、代码块、表格、图片。</p>
       </div>
       <div class="feature-card">
-        <span class="icon">💻</span>
-        <h3>代码/配置文件查看器</h3>
-        <p>直接打开 .json / .xml / .yaml / .jsonl，Prism.js 语法高亮，一键格式化。轻量替代 VS Code 查看。</p>
+        <span class="icon">🛡️</span>
+        <h3>永不丢稿</h3>
+        <p>1.5s 自动保存 + 每文件 10 个历史快照 + 草稿恢复 + 关闭确认。三重保险。</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">🔄</span>
+        <h3>自动更新</h3>
+        <p>启动后静默检查 GitHub Release，发现新版弹出横幅，一键下载 + 重启安装（v2.0.0+）。</p>
       </div>
       <div class="feature-card">
         <span class="icon">🎨</span>
         <h3>主题与布局</h3>
-        <p>亮色/暗色/跟随系统 + 5 套排版主题。三栏可拖动布局（大纲↔编辑器↔源码），双向同步。</p>
+        <p>亮色/暗色/跟随系统 + 5 套排版主题。三栏可拖动布局（大纲↔编辑器↔源码），双向滚动同步。</p>
       </div>
     </div>
     <div class="export-formats">
@@ -176,10 +192,28 @@
             <td class="check">✓</td>
           </tr>
           <tr>
+            <td>JSONL 对话浏览</td>
+            <td class="check">✓</td>
+            <td class="cross">无</td>
+            <td class="cross">无</td>
+          </tr>
+          <tr>
+            <td>批量数据标注</td>
+            <td class="check">✓</td>
+            <td class="cross">无</td>
+            <td class="cross">无</td>
+          </tr>
+          <tr>
             <td>PDF/HTML/Word 导出</td>
             <td class="check">✓</td>
             <td class="check">✓</td>
             <td class="cross">需插件</td>
+          </tr>
+          <tr>
+            <td>自动更新</td>
+            <td class="check">✓</td>
+            <td class="cross">无</td>
+            <td class="cross">无</td>
           </tr>
           <tr>
             <td>启动速度</td>
@@ -208,6 +242,9 @@
         <tr><th>操作</th><th>macOS</th><th>Windows</th></tr>
       </thead>
       <tbody>
+        <tr><td>新标签页</td><td><kbd>⌘T</kbd></td><td><kbd>Ctrl+T</kbd></td></tr>
+        <tr><td>关闭标签页</td><td><kbd>⌘W</kbd></td><td><kbd>Ctrl+W</kbd></td></tr>
+        <tr><td>切换标签页</td><td><kbd>⌘1</kbd> … <kbd>⌘9</kbd></td><td><kbd>Ctrl+1</kbd> … <kbd>Ctrl+9</kbd></td></tr>
         <tr><td>新建</td><td><kbd>⌘N</kbd></td><td><kbd>Ctrl+N</kbd></td></tr>
         <tr><td>快速打开</td><td><kbd>⌘P</kbd></td><td><kbd>Ctrl+P</kbd></td></tr>
         <tr><td>保存</td><td><kbd>⌘S</kbd></td><td><kbd>Ctrl+S</kbd></td></tr>
@@ -215,6 +252,7 @@
         <tr><td>切换大纲</td><td><kbd>⌘\</kbd></td><td><kbd>Ctrl+\</kbd></td></tr>
         <tr><td>切换源码</td><td><kbd>⌘E</kbd></td><td><kbd>Ctrl+E</kbd></td></tr>
         <tr><td>专注模式</td><td><kbd>⌘⇧F</kbd></td><td><kbd>Ctrl+⇧F</kbd></td></tr>
+        <tr><td>格式化代码</td><td><kbd>⌥⌘L</kbd></td><td><kbd>Alt+Ctrl+L</kbd></td></tr>
         <tr><td>导出 PDF</td><td><kbd>⌘⇧P</kbd></td><td><kbd>Ctrl+⇧P</kbd></td></tr>
         <tr><td>切换主题</td><td><kbd>⌘/</kbd></td><td><kbd>Ctrl+/</kbd></td></tr>
         <tr><td>收藏文件</td><td><kbd>⌘D</kbd></td><td><kbd>Ctrl+D</kbd></td></tr>
