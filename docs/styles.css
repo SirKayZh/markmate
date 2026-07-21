@@ -550,15 +550,20 @@ body {
   text-decoration: underline;
 }
 
-/* 2x2 布局：产品速览（大卡片） */
+/* 1 列横条：产品速览（紧凑横向卡片） */
 .feature-row {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 24px;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 .feature-mini {
-  padding: 40px 32px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 24px;
   background: var(--bg-alt);
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -566,26 +571,32 @@ body {
 }
 
 .feature-mini:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  transform: translateX(2px);
+  box-shadow: var(--shadow);
+  border-color: var(--accent);
 }
 
 .feature-mini .icon {
-  font-size: 48px;
-  display: block;
-  margin-bottom: 18px;
+  font-size: 28px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.feature-mini .feature-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .feature-mini h3 {
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 700;
-  margin-bottom: 10px;
+  margin-bottom: 2px;
 }
 
 .feature-mini p {
-  font-size: 15px;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.7;
+  line-height: 1.5;
 }
 
 /* 2x2 布局：下载区（大卡片） */
@@ -685,11 +696,11 @@ body {
   border-color: var(--accent);
 }
 
-/* 4 列横排：截图（hover 放大） */
+/* 2x2 布局：截图（hover 放大） */
 .screenshot-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
 }
 
 .shot-card {
@@ -722,10 +733,10 @@ body {
 }
 
 .shot-card figcaption {
-  padding: 10px 12px;
-  font-size: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.5;
   text-align: center;
 }
 
@@ -812,28 +823,15 @@ body {
   line-height: 1.6;
 }
 
-/* Responsive — 4 列降级 */
-@media (max-width: 960px) {
-  .screenshot-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .cl-item {
-    grid-template-columns: 120px 1fr;
-    gap: 16px;
-  }
-}
-
+/* Responsive — 降级 */
 @media (max-width: 768px) {
-  .feature-row,
-  .download-row {
+  .download-row,
+  .screenshot-row {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 600px) {
-  .screenshot-row {
-    grid-template-columns: 1fr;
-  }
   .cl-item {
     grid-template-columns: 1fr;
     gap: 8px;
