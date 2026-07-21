@@ -599,16 +599,16 @@ body {
   line-height: 1.5;
 }
 
-/* 2x2 布局：下载区（大卡片） */
+/* 2x2 布局：下载区（紧凑卡片） */
 .download-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
+  gap: 16px;
 }
 
 .dl-card {
   display: block;
-  padding: 32px 28px;
+  padding: 20px 18px;
   background: var(--bg-alt);
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -630,47 +630,47 @@ body {
 }
 
 .dl-platform {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .dl-recommend {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 10px;
   background: var(--accent);
   color: #fff;
 }
 
 .dl-arch {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .dl-name {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   background: var(--bg);
-  padding: 8px 12px;
-  border-radius: 6px;
-  margin-bottom: 18px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  margin-bottom: 12px;
   word-break: break-all;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 .dl-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .dl-meta span:last-child {
@@ -681,10 +681,10 @@ body {
 .dl-action {
   display: block;
   text-align: center;
-  padding: 12px 0;
+  padding: 8px 0;
   background: var(--bg);
-  border-radius: 8px;
-  font-size: 16px;
+  border-radius: 6px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--accent);
   border: 1px solid var(--border);
