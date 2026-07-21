@@ -359,3 +359,109 @@ body {
 .feedback-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .feedback-card .icon { font-size: 24px; margin-bottom: 8px; display: block; }
 .feedback-card .label { font-size: 14px; font-weight: 600; }
+
+/* Screenshot grid (download page) */
+.screenshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.screenshot-card {
+  background: var(--bg-alt);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.screenshot-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.screenshot-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.screenshot-card figcaption {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Changelog (download page) */
+.changelog {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.changelog-item {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.changelog-item:last-child {
+  border-bottom: none;
+}
+
+.changelog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.changelog-version {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.changelog-date {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+.changelog-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.changelog-badge-latest {
+  background: #10b981;
+  color: #fff;
+}
+
+.changelog-badge-major {
+  background: #ef4444;
+  color: #fff;
+}
+
+.changelog-badge-minor {
+  background: var(--bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.changelog-item ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.changelog-item ul li {
+  padding: 4px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
