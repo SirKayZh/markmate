@@ -64,214 +64,206 @@
 
 <main>
 
-<section class="hero">
+<!-- Hero: 强化版 -->
+<section class="hero hero-download">
   <div class="container">
-    <h1>下载 MarkMate</h1>
-    <p class="subtitle" style="margin-bottom:16px;">最新版本 <strong>v2.1.0</strong> · 2026-07-21</p>
-    <p style="color:var(--text-secondary);font-size:14px;margin-bottom:20px;">
-      应用未签名。macOS 请右键打开，Windows 请点击「更多信息 → 仍要运行」。
+    <img src="images/icon.png" alt="MarkMate" class="hero-icon">
+    <h1>MarkMate v2.1.0</h1>
+    <p class="subtitle">
+      为大模型工作流量身打造的桌面文件编辑器 —<br>
+      <strong>Markdown 写作 + JSONL 数据浏览 + 数据标注 + 多格式导出</strong>
+    </p>
+    <div class="hero-actions">
+      <a href="#downloads" class="btn btn-primary btn-lg">⬇ 立即下载</a>
+      <a href="https://github.com/SirKayZh/markmate" class="btn btn-secondary btn-lg" target="_blank" rel="noopener">GitHub 仓库</a>
+    </div>
+    <div class="hero-platforms">
+      <span class="platform-badge">🍎 macOS · Apple Silicon + Intel</span>
+      <span class="platform-badge">🪟 Windows x64</span>
+      <span class="platform-badge">📜 MIT 开源</span>
+      <span class="platform-badge">🆓 完全免费</span>
+    </div>
+    <p class="hero-note">
+      ⚠️ 应用未签名。macOS 请右键打开，Windows 请点击「更多信息 → 仍要运行」。
     </p>
   </div>
 </section>
 
-<!-- 产品速览 -->
-<section class="section" style="padding-top:20px;">
+<!-- 产品速览：4 列横排 -->
+<section class="section" id="features">
   <div class="container">
-    <h2 class="section-title">⚡ 一个应用，全搞定</h2>
-    <div class="features">
-      <div class="feature-card">
+    <h2 class="section-title-sm">一个应用，全搞定</h2>
+    <div class="feature-row">
+      <div class="feature-mini">
         <span class="icon">✍️</span>
-        <h3>所见即所得 Markdown</h3>
-        <p>打字即预览，专注模式 + 打字机模式 + 5 套排版主题，沉浸写作。</p>
+        <h3>所见即所得</h3>
+        <p>Markdown 打字即预览，专注模式 + 5 套主题</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-mini">
         <span class="icon">💬</span>
-        <h3>JSONL 对话视图</h3>
-        <p>自动识别 OpenAI / Alpaca / ShareGPT 格式，角色着色气泡 + 批量标注编辑。</p>
+        <h3>JSONL 对话</h3>
+        <p>OpenAI / Alpaca / ShareGPT 角色着色气泡 + 批量标注</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-mini">
         <span class="icon">📤</span>
         <h3>多格式导出</h3>
-        <p>一键导出 PDF / HTML / Word / 长图 PNG，保留字体、代码块、表格、图片。</p>
+        <p>PDF / HTML / Word / 长图，保留代码块和图片</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-mini">
         <span class="icon">🛡️</span>
         <h3>永不丢稿</h3>
-        <p>自动保存 + 每文件 10 个历史快照 + 草稿恢复 + 关闭确认，三重保险。</p>
+        <p>自动保存 + 10 个历史快照 + 草稿恢复</p>
       </div>
-    </div>
-    <div class="export-formats">
-      <span class="format-badge">📄 PDF</span>
-      <span class="format-badge">🌐 HTML</span>
-      <span class="format-badge">📝 Word</span>
-      <span class="format-badge">🖼️ 长图</span>
-      <span class="format-badge">📊 JSON</span>
-      <span class="format-badge">📋 XML</span>
-      <span class="format-badge">⚙️ YAML</span>
     </div>
   </div>
 </section>
 
-<!-- macOS 下载 -->
-<section class="section">
+<!-- 下载区：4 列横排 -->
+<section class="section" id="downloads">
   <div class="container">
-    <h2 class="section-title">🍎 macOS</h2>
-    <div class="download-options">
-      <div class="download-card">
-        <div class="os">Apple Silicon</div>
-        <div class="arch">M1 / M2 / M3 / M4</div>
-        <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.0/MarkMate-2.1.0-arm64.dmg" class="btn btn-primary" onclick="trackDownload('mac-arm64')">
-          ⬇ 下载 DMG
-        </a>
-        <div class="size">107 MB</div>
-      </div>
-      <div class="download-card">
-        <div class="os">Intel</div>
-        <div class="arch">x64 处理器</div>
-        <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.0/MarkMate-2.1.0-x64.dmg" class="btn btn-primary" onclick="trackDownload('mac-x64')">
-          ⬇ 下载 DMG
-        </a>
-        <div class="size">116 MB</div>
-      </div>
+    <h2 class="section-title-sm">下载 · v2.1.0</h2>
+    <p class="section-subtitle">选你的平台直接下载，所有版本同步发布在 <a href="https://github.com/SirKayZh/markmate/releases" target="_blank" rel="noopener">GitHub Releases</a></p>
+    <div class="download-row">
+      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.0/MarkMate-2.1.0-arm64.dmg" class="dl-card" onclick="trackDownload('mac-arm64')">
+        <div class="dl-platform">🍎 Apple Silicon</div>
+        <div class="dl-arch">M1 / M2 / M3 / M4</div>
+        <div class="dl-name">MarkMate-2.1.0-arm64.dmg</div>
+        <div class="dl-meta"><span>107 MB</span><span>macOS</span></div>
+        <div class="dl-action">⬇ 下载</div>
+      </a>
+      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.0/MarkMate-2.1.0-x64.dmg" class="dl-card" onclick="trackDownload('mac-x64')">
+        <div class="dl-platform">🍎 Intel</div>
+        <div class="dl-arch">x64 处理器</div>
+        <div class="dl-name">MarkMate-2.1.0-x64.dmg</div>
+        <div class="dl-meta"><span>116 MB</span><span>macOS</span></div>
+        <div class="dl-action">⬇ 下载</div>
+      </a>
+      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.0/MarkMate-2.1.0-x64-setup.exe" class="dl-card dl-card-primary" onclick="trackDownload('win-setup')">
+        <div class="dl-platform">🪟 Windows 安装版 <span class="dl-recommend">推荐</span></div>
+        <div class="dl-arch">NSIS 安装程序</div>
+        <div class="dl-name">MarkMate-2.1.0-x64-setup.exe</div>
+        <div class="dl-meta"><span>80 MB</span><span>Windows</span></div>
+        <div class="dl-action">⬇ 下载</div>
+      </a>
+      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.0/MarkMate-2.1.0-x64-portable.exe" class="dl-card" onclick="trackDownload('win-portable')">
+        <div class="dl-platform">🪟 Windows 便携版</div>
+        <div class="dl-arch">免安装，解压即用</div>
+        <div class="dl-name">MarkMate-2.1.0-x64-portable.exe</div>
+        <div class="dl-meta"><span>73 MB</span><span>Windows</span></div>
+        <div class="dl-action">⬇ 下载</div>
+      </a>
     </div>
-    <p style="text-align:center;margin-top:12px;font-size:13px;color:var(--text-secondary);">
-      下载后双击 DMG → 将 MarkMate 拖入 Applications 文件夹 → 首次打开右键选择「打开」
-    </p>
   </div>
 </section>
 
-<!-- Windows 下载 -->
+<!-- 截图预览：4 列横排 -->
 <section class="section">
   <div class="container">
-    <h2 class="section-title">🪟 Windows</h2>
-    <div class="download-options">
-      <div class="download-card">
-        <div class="os">安装版（推荐）</div>
-        <div class="arch">NSIS 安装程序</div>
-        <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.0/MarkMate-2.1.0-x64-setup.exe" class="btn btn-primary" onclick="trackDownload('win-setup')">
-          ⬇ 下载 EXE
-        </a>
-        <div class="size">80 MB</div>
-      </div>
-      <div class="download-card">
-        <div class="os">便携版</div>
-        <div class="arch">免安装，解压即用</div>
-        <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.0/MarkMate-2.1.0-x64-portable.exe" class="btn btn-secondary" onclick="trackDownload('win-portable')">
-          ⬇ 下载 EXE
-        </a>
-        <div class="size">73 MB</div>
-      </div>
-    </div>
-    <p style="text-align:center;margin-top:12px;font-size:13px;color:var(--text-secondary);">
-      安装版支持自定义安装路径与桌面快捷方式。便携版免安装，双击即用。
-    </p>
-  </div>
-</section>
-
-<!-- 截图预览 -->
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">📸 产品速览</h2>
-    <div class="screenshot-grid">
-      <figure class="screenshot-card">
-        <img src="images/screenshots/hero-macos-light.png" alt="MarkMate 主界面（macOS 亮色）" loading="lazy">
-        <figcaption>主界面 — 所见即所得 Markdown 编辑 + 大纲 + 文件管理三栏布局</figcaption>
+    <h2 class="section-title-sm">产品速览</h2>
+    <p class="section-subtitle">真实的应用界面 — 4 个差异化卖点</p>
+    <div class="screenshot-row">
+      <figure class="shot-card">
+        <div class="shot-img-wrap">
+          <img src="images/screenshots/hero-macos-light.png" alt="MarkMate 主界面" loading="lazy">
+        </div>
+        <figcaption>主界面 — 三栏布局，所见即所得</figcaption>
       </figure>
-      <figure class="screenshot-card">
-        <img src="images/screenshots/jsonl-conversation.png" alt="JSONL 对话气泡视图" loading="lazy">
-        <figcaption>JSONL 对话视图 — OpenAI / Alpaca / ShareGPT 格式自动识别，角色着色气泡</figcaption>
+      <figure class="shot-card">
+        <div class="shot-img-wrap">
+          <img src="images/screenshots/jsonl-conversation.png" alt="JSONL 对话气泡" loading="lazy">
+        </div>
+        <figcaption>JSONL 对话 — 角色着色 + 批量标注</figcaption>
       </figure>
-      <figure class="screenshot-card">
-        <img src="images/screenshots/json-syntax-error.png" alt="JSON 解析错误定位" loading="lazy">
-        <figcaption>JSON 错误定位 — 出错行号、列号一目了然，一键跳转</figcaption>
+      <figure class="shot-card">
+        <div class="shot-img-wrap">
+          <img src="images/screenshots/json-syntax-error.png" alt="JSON 错误定位" loading="lazy">
+        </div>
+        <figcaption>JSON 错误 — 行号列号一目了然</figcaption>
       </figure>
-      <figure class="screenshot-card">
-        <img src="images/screenshots/file-manager.png" alt="文件管理侧栏" loading="lazy">
-        <figcaption>文件管理 — 收藏夹 / 最近打开 / 当前文件夹 / 搜索过滤</figcaption>
+      <figure class="shot-card">
+        <div class="shot-img-wrap">
+          <img src="images/screenshots/file-manager.png" alt="文件管理侧栏" loading="lazy">
+        </div>
+        <figcaption>文件管理 — 收藏 + 最近 + 当前文件夹</figcaption>
       </figure>
     </div>
   </div>
 </section>
 
-<!-- 版本更新历史 -->
+<!-- 版本更新历史：紧凑 2 列 -->
 <section class="section">
   <div class="container">
-    <h2 class="section-title">🔄 版本更新历史</h2>
+    <h2 class="section-title-sm">更新日志</h2>
+    <p class="section-subtitle">每个版本的核心用户视角更新 — 完整记录见 <a href="https://github.com/SirKayZh/markmate/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a></p>
     <div class="changelog">
 
-      <article class="changelog-item">
-        <header class="changelog-header">
-          <span class="changelog-version">v2.1.0</span>
-          <span class="changelog-badge changelog-badge-latest">最新</span>
-          <span class="changelog-date">2026-07-21</span>
-        </header>
-        <ul>
-          <li>🟢 Windows 顶部 5 个按钮找回（搜索/收藏/源码/格式化/主题）</li>
+      <article class="cl-item cl-item-latest">
+        <div class="cl-version">
+          <div class="cl-version-num">v2.1.0</div>
+          <span class="cl-badge cl-badge-latest">最新</span>
+          <div class="cl-date">2026-07-21</div>
+        </div>
+        <ul class="cl-changes">
+          <li>🟢 Windows 顶部 5 个按钮找回（搜索 / 收藏 / 源码 / 格式化 / 主题）</li>
           <li>🟢 关窗超时从 3s 拉长到 30s，思考「保存还是放弃」时不再被强关丢数据</li>
           <li>🔒 安全加固：新增内容安全策略（CSP）+ Vditor 改用本地 lute 引擎</li>
         </ul>
       </article>
 
-      <article class="changelog-item">
-        <header class="changelog-header">
-          <span class="changelog-version">v2.0.0</span>
-          <span class="changelog-badge changelog-badge-major">重大更新</span>
-          <span class="changelog-date">2026-07-14</span>
-        </header>
-        <ul>
+      <article class="cl-item">
+        <div class="cl-version">
+          <div class="cl-version-num">v2.0.0</div>
+          <span class="cl-badge cl-badge-major">重大更新</span>
+          <div class="cl-date">2026-07-14</div>
+        </div>
+        <ul class="cl-changes">
           <li>💬 OpenAI Messages 格式对话视图（system / user / assistant / tool 角色着色）</li>
           <li>✏️ JSONL 对话标注编辑 + 批量保存 + 保存并下一页</li>
-          <li>⬆️ 内置自动更新（electron-updater），新版横幅提示一键下载安装</li>
-          <li>🪟 Windows 平台 12 项适配修复（双标题栏 / 长图截断 / 字体 / 快捷键等）</li>
+          <li>⬆️ 内置自动更新，新版横幅提示一键下载安装</li>
+          <li>🪟 Windows 平台 12 项适配修复</li>
         </ul>
       </article>
 
-      <article class="changelog-item">
-        <header class="changelog-header">
-          <span class="changelog-version">v1.6.0</span>
-          <span class="changelog-badge changelog-badge-minor">架构升级</span>
-          <span class="changelog-date">2026-06-19</span>
-        </header>
-        <ul>
-          <li>🪟 多 Tab / 多窗口架构（⌘T 新建 / ⌘W 关闭 / ⌘1-9 切换）</li>
+      <article class="cl-item">
+        <div class="cl-version">
+          <div class="cl-version-num">v1.6.0</div>
+          <span class="cl-badge cl-badge-minor">架构升级</span>
+          <div class="cl-date">2026-06-19</div>
+        </div>
+        <ul class="cl-changes">
+          <li>🪟 多 Tab / 多窗口架构（⌘T / ⌘W / ⌘1-9）</li>
           <li>📌 文件重复打开检测：同一文件自动聚焦已有 Tab</li>
           <li>🖼️ 原生图片对话框 + 插入链接弹窗</li>
         </ul>
       </article>
 
-      <article class="changelog-item">
-        <header class="changelog-header">
-          <span class="changelog-version">v1.4.1</span>
-          <span class="changelog-badge changelog-badge-minor">Windows 支持</span>
-          <span class="changelog-date">2026-06-13</span>
-        </header>
-        <ul>
+      <article class="cl-item">
+        <div class="cl-version">
+          <div class="cl-version-num">v1.4.1</div>
+          <span class="cl-badge cl-badge-minor">Windows 支持</span>
+          <div class="cl-date">2026-06-13</div>
+        </div>
+        <ul class="cl-changes">
           <li>🪟 MarkMate 现可在 Windows x64 运行（安装版 + 便携版）</li>
-          <li>🖼️ 修复长图导出截断问题（macOS 上超 5000 像素部分不再被裁掉）</li>
+          <li>🖼️ 修复长图导出截断问题</li>
           <li>⌨️ 快捷键自动适配 Windows 风格（Ctrl 取代 ⌘）</li>
         </ul>
       </article>
 
-      <article class="changelog-item">
-        <header class="changelog-header">
-          <span class="changelog-version">v1.0.0</span>
-          <span class="changelog-badge changelog-badge-minor">首发版本</span>
-          <span class="changelog-date">2026-06-13</span>
-        </header>
-        <ul>
-          <li>✍️ 类 Typora 所见即所得 Markdown 编辑器（Electron + Vditor）</li>
+      <article class="cl-item">
+        <div class="cl-version">
+          <div class="cl-version-num">v1.0.0</div>
+          <span class="cl-badge cl-badge-minor">首发版本</span>
+          <div class="cl-date">2026-06-13</div>
+        </div>
+        <ul class="cl-changes">
+          <li>✍️ 类 Typora 所见即所得 Markdown 编辑器</li>
           <li>🧭 大纲侧栏 + 字数统计 + 明暗主题</li>
-          <li>📦 macOS arm64 / x64 双架构 DMG 安装包</li>
+          <li>📦 macOS arm64 / x64 双架构 DMG</li>
         </ul>
       </article>
 
     </div>
-
-    <p style="text-align:center;margin-top:32px;">
-      <a href="https://github.com/SirKayZh/markmate/releases" class="btn btn-secondary" target="_blank" rel="noopener">
-        查看全部 Releases →
-      </a>
-    </p>
   </div>
 </section>
 
