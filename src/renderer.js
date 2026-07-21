@@ -98,10 +98,10 @@ function getJsonWorker() {
       // Worker 整体异常：回退到同步路径
       jsonWorkerPending.forEach(p => p.resolve(null));
       jsonWorkerPending.clear();
-      try { jsonWorker.terminate(); } catch (_) {}
+      try { jsonWorker.terminate(); } catch (err) { console.warn('[MarkMate:renderer]', err); }
       jsonWorker = null;
     };
-  } catch (_) { jsonWorker = null; }
+  } catch (err) { console.warn('[MarkMate:json-worker]', err); jsonWorker = null; }
   return jsonWorker;
 }
 // 由 JSON 报错信息推算出错位置（1-based 行/列）。与 json-worker.js 的逻辑保持一致：
@@ -224,12 +224,41 @@ $$
 `;
 
 // ============ 多 Tab 管理 ============
+// ── Tab 状态模型（单一事实来源）──
+// 每个 Tab 的完整状态由 makeTab() 定义。全局镜像变量（currentFilePath / isDirty /
+// currentCodeMode / currentJsonView / jsonlPage / chatEdits）始终指向「当前激活 Tab」的状态；
+// 切换 Tab 时通过 captureTabState()（活动态 → tab 对象）与 restoreTabState()（tab 对象 → 活动态）
+// 做双向同步。
+//
+// 加一个新的 per-tab 状态字段时，只需改两处：
+//   1. makeTab() 里加默认值（新字段的初始状态）
+//   2. captureTabState() / restoreTabState() 里加一行同步（若该字段有对应全局镜像）
+// 不再需要在散落的对象字面量里逐个补齐——这是本次 P1 重构消除的「改 4 处」痛点。
 let tabs = [];
 let activeTabId = null;
 let tabIdCounter = 0;
 
 function generateTabId() {
   return 'tab-' + (++tabIdCounter) + '-' + Date.now();
+}
+
+// Tab 工厂：定义完整字段 schema。所有 Tab 都必须经此创建，禁止在别处写对象字面量。
+function makeTab({ filePath = null, content = '', codeMode = null } = {}) {
+  return {
+    id: generateTabId(),
+    filePath: filePath || null,
+    displayName: filePath ? filePath.split('/').pop() : '未命名',
+    content: content || '',
+    codeMode: codeMode || null,
+    dirty: false,
+    // 编辑器视口
+    scrollTop: 0,
+    cursorPos: 0,
+    // JSON/JSONL 查看器
+    jsonView: 'tree',      // 'tree' | 'chat' | 'raw'
+    jsonlPage: 0,
+    _chatEdits: new Map(), // JSONL 对话标注编辑缓存（按 tab 隔离，跨文件切换不丢）
+  };
 }
 
 function getTabById(id) {
@@ -244,9 +273,8 @@ function getActiveTab() {
   return activeTabId ? getTabById(activeTabId) : null;
 }
 
-// 保存当前 tab 的编辑器状态到 tab 对象
-function saveCurrentTabState() {
-  const tab = getActiveTab();
+// 捕获「活动态全局镜像」→ 写回 tab 对象。切走当前 tab 前调用。
+function captureTabState(tab) {
   if (!tab) return;
   // 仅脏状态才重新读取内容（vditor.getValue() 对大文件很慢）
   if (isDirty) tab.content = getEditorContent();
@@ -254,16 +282,14 @@ function saveCurrentTabState() {
   tab.codeMode = currentCodeMode;
   tab.filePath = currentFilePath;
   tab.displayName = currentFilePath ? currentFilePath.split('/').pop() : '未命名';
-  // 保存 JSON viewer 状态
   tab.jsonView = currentJsonView;
   tab.jsonlPage = jsonlPage;
-  // 保存 JSONL 对话标注编辑（按 tab 隔离，避免跨文件切换丢失）
   if (chatEdits instanceof Map) tab._chatEdits = new Map(chatEdits);
+  // 视口位置：按当前模式取不同滚动容器
   if (currentCodeMode && codeEditor) {
     tab.scrollTop = codeEditor.scrollTop;
     tab.cursorPos = codeEditor.selectionStart;
   } else if (!currentCodeMode) {
-    // md 模式记录 vditor 滚动位置
     const scroller = document.querySelector('.vditor-ir pre.vditor-reset, .vditor-wysiwyg pre.vditor-reset');
     tab.scrollTop = scroller ? scroller.scrollTop : 0;
     tab.cursorPos = 0;
@@ -271,6 +297,22 @@ function saveCurrentTabState() {
     tab.scrollTop = 0;
     tab.cursorPos = 0;
   }
+}
+
+// 恢复 tab 对象 → 活动态全局镜像（不含视图重建，视图重建在 switchToTab 内按模式编排）。
+function restoreTabState(tab) {
+  if (!tab) return;
+  currentFilePath = tab.filePath;
+  currentCodeMode = tab.codeMode;
+  isDirty = tab.dirty;
+  currentJsonView = tab.jsonView || 'tree';
+  jsonlPage = tab.jsonlPage || 0;
+  chatEdits = tab._chatEdits instanceof Map ? new Map(tab._chatEdits) : new Map();
+}
+
+// 兼容旧调用名：保存当前 tab 的编辑器状态到 tab 对象
+function saveCurrentTabState() {
+  captureTabState(getActiveTab());
 }
 
 // 创建新 tab 并切换过去
@@ -283,20 +325,7 @@ function createTab(filePath, content, codeMode, options = {}) {
       return existing;
     }
   }
-  const displayName = filePath ? filePath.split('/').pop() : '未命名';
-  const tab = {
-    id: generateTabId(),
-    filePath: filePath || null,
-    displayName,
-    codeMode: codeMode || null,
-    content: content || '',
-    dirty: false,
-    scrollTop: 0,
-    cursorPos: 0,
-    jsonView: 'tree',
-    jsonlPage: 0,
-    _chatEdits: new Map(),   // JSONL 标注编辑缓存（按 tab 隔离）
-  };
+  const tab = makeTab({ filePath, content, codeMode });
   tabs.push(tab);
   renderTabBar();
   if (options.noSwitch) return tab;
@@ -324,19 +353,13 @@ async function switchToTab(tabId) {
     }
   }
   // 保存当前 tab 状态
-  saveCurrentTabState();
+  captureTabState(getActiveTab());
   activeTabId = tabId;
   const tab = getTabById(tabId);
   if (!tab) return;
 
-  // 恢复 tab 状态
-  currentFilePath = tab.filePath;
-  currentCodeMode = tab.codeMode;
-  isDirty = tab.dirty;
-  currentJsonView = tab.jsonView || 'tree';
-  jsonlPage = tab.jsonlPage || 0;
-  // 恢复 JSONL 标注编辑缓存（按 tab 隔离，避免跨文件切换丢失）
-  chatEdits = tab._chatEdits instanceof Map ? new Map(tab._chatEdits) : new Map();
+  // 恢复 tab 状态（全局镜像）
+  restoreTabState(tab);
 
   applyCodeMode(tab.codeMode);
   if (tab.codeMode) {
@@ -669,6 +692,10 @@ function initVditor(value) {
     value: value || '',
     theme: darkMode ? 'dark' : 'classic',
     cache: { enable: false },
+    // 使用本地 vditor 资源（lute/图标等），避免走 unpkg CDN。
+    // 此前默认走 https://unpkg.com/vditor@x/dist/js/lute/lute.min.js，
+    // 在 CSP 收紧 / 离线场景下加载失败导致 vditor 部分功能不可用。
+    cdn: '../node_modules/vditor',
     i18n: {
       alignCenter: '居中', alignLeft: '居左', alignRight: '居右',
       alternateText: '替代文本', bold: '粗体', both: '编辑 & 预览',
@@ -885,7 +912,7 @@ async function handleImageUpload(files) {
 const outlineCollapseKey = 'markmate-outline-collapsed';
 function getCollapsed() {
   try { return new Set(JSON.parse(localStorage.getItem(outlineCollapseKey) || '[]')); }
-  catch (_) { return new Set(); }
+  catch (err) { console.warn('[MarkMate:outline]', err); return new Set(); }
 }
 function saveCollapsed(set) {
   localStorage.setItem(outlineCollapseKey, JSON.stringify([...set]));
@@ -989,7 +1016,7 @@ document.getElementById('outline-content').addEventListener('click', (e) => {
   const targetId = item.dataset.id;
   const heading = document.getElementById(targetId);
   if (!heading) return;
-  try { heading.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); } catch (_) {}
+  try { heading.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); } catch (err) { console.warn('[MarkMate:renderer]', err); }
   // 同步源码面板滚动到对应位置
   if (sourceVisible) {
     const editorScroll = getEditorScrollEl();
@@ -1099,7 +1126,7 @@ function getCollapsedSections() {
       return new Set(['folder']);
     }
     return new Set(JSON.parse(localStorage.getItem(FILES_COLLAPSE_KEY) || '[]'));
-  } catch (_) { return new Set(); }
+  } catch (err) { console.warn('[MarkMate:outline]', err); return new Set(); }
 }
 function saveCollapsedSections(set) { localStorage.setItem(FILES_COLLAPSE_KEY, JSON.stringify([...set])); }
 function isSectionCollapsed(name) { return getCollapsedSections().has(name); }
@@ -1142,7 +1169,7 @@ document.addEventListener('click', (e) => {
       // fallback: 通过 name 属性查找
       targetEl = document.querySelector('[name="' + CSS.escape(targetId) + '"]');
     }
-  } catch (_) {}
+  } catch (err) { console.warn('[MarkMate:renderer]', err); }
   // fallback 2: Vditor wysiwyg 的 heading id 与 toc href 不一致（slugify 规则不同或无 id）
   // 改用链接文本匹配编辑区内的 <h> 元素
   if (!targetEl) {
@@ -1166,7 +1193,7 @@ document.addEventListener('click', (e) => {
     showQuickToast('未找到目标章节：' + targetId);
     return;
   }
-  try { targetEl.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); } catch (_) {}
+  try { targetEl.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); } catch (err) { console.warn('[MarkMate:renderer]', err); }
   const linkText = (anchorLink.textContent || '').trim().slice(0, 40);
   showJumpToast({ textContent: linkText || targetId });
   flashHeading(targetEl);
@@ -1441,7 +1468,7 @@ function buildJsonlContentFromEdits() {
   const merged = jsonlCachedLines.slice();
   for (const [cachedIdx, entry] of chatEdits.entries()) {
     if (cachedIdx < 0 || cachedIdx >= merged.length) continue;
-    try { merged[cachedIdx] = JSON.stringify(entry); } catch (_) {}
+    try { merged[cachedIdx] = JSON.stringify(entry); } catch (err) { console.warn('[MarkMate:renderer]', err); }
   }
   return merged.join('\n') + '\n';
 }
@@ -1841,11 +1868,11 @@ function applyCodeMode(mode) {
     const vditorEl = document.getElementById('vditor');
     vditorEl.style.display = '';
     vditorEl.offsetHeight;
-    if (vditor) { try { vditor.destroy(); } catch (_) {} vditor = null; vditorReady = false; }
+    if (vditor) { try { vditor.destroy(); } catch (err) { console.warn('[MarkMate:renderer]', err); } vditor = null; vditorReady = false; }
     vditorEl.innerHTML = '';
     vditorNeedsRebuild = false;
   }
-  try { renderOutlineTree(); } catch (_) {}
+  try { renderOutlineTree(); } catch (err) { console.warn('[MarkMate:renderer]', err); }
 }
 
 // ── JSON Viewer 初始化 ──
@@ -1979,7 +2006,7 @@ function loadJsonlPage(pageNum, allLines) {
     try {
       jsonlEntries.push(JSON.parse(lines[i]));
       jsonlEntryCacheIdx.push(cachedIdx);
-    } catch (_) { /* 跳过无效行 */ }
+    } catch (_) { /* 跳过无效行（JSONL 逐行容错，量大不刷日志） */ }
   }
   jsonlPage = pageNum;
   updateJsonlPager();
@@ -2140,7 +2167,8 @@ function renderJsonTreeForCurrentData() {
       const obj = jsonParsedObj !== null ? jsonParsedObj : JSON.parse(codeEditor.value || 'null');
       // expandDepth 保持默认 2（普通 JSON 浅展开防性能）；字符串阈值同样自适应窗口宽度
       JSONTree.render(treeContainer, obj, { stringPreviewLimit: computeTreeStringLimit() });
-    } catch (_) {
+    } catch (err) {
+      console.warn('[MarkMate:json-tree]', err);
       treeContainer.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">JSON 解析失败</div>';
     }
   }
@@ -2279,7 +2307,7 @@ function showJsonStats(entries, format) {
     } else {
       statsEntries = [];
       for (const line of jsonlCachedLines) {
-        try { statsEntries.push(JSON.parse(line)); } catch (_) {}
+        try { statsEntries.push(JSON.parse(line)); } catch (err) { console.warn('[MarkMate:renderer]', err); }
       }
       jsonlStatsCache = { lines: jsonlCachedLines, entries: statsEntries };
     }
@@ -2323,6 +2351,26 @@ function jsonExpandAll() {
 
 // ── JSON Viewer 事件绑定（init 时调用一次） ──
 function bindJsonViewerEvents() {
+  // 视图切换（去内联 onclick，便于 CSP 收紧）
+  document.querySelectorAll('.json-view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.getAttribute('data-view');
+      if (view) switchJsonView(view);
+    });
+  });
+  // 全部折叠 / 展开
+  const collapseAllBtn = document.getElementById('json-collapse-all');
+  if (collapseAllBtn) collapseAllBtn.addEventListener('click', jsonCollapseAll);
+  const expandAllBtn = document.getElementById('json-expand-all');
+  if (expandAllBtn) expandAllBtn.addEventListener('click', jsonExpandAll);
+  // 分页：上一页 / 下一页 / 跳页 Go
+  const prevBtn = document.getElementById('jsonl-prev');
+  if (prevBtn) prevBtn.addEventListener('click', () => changeJsonlPage(-1));
+  const nextBtn = document.getElementById('jsonl-next');
+  if (nextBtn) nextBtn.addEventListener('click', () => changeJsonlPage(1));
+  const jumpBtn = document.getElementById('jsonl-jump-btn');
+  if (jumpBtn) jumpBtn.addEventListener('click', jumpToJsonlPage);
+
   // 统计面板切换（需要访问 DOM，不适合 inline onclick）
   const statsToggle = document.getElementById('json-stats-toggle');
   if (statsToggle) statsToggle.addEventListener('click', () => {
@@ -2418,7 +2466,7 @@ function populateJsonFilterFields() {
       if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
         Object.keys(obj).forEach(k => fields.add(k));
       }
-    } catch (_) {}
+    } catch (err) { console.warn('[MarkMate:renderer]', err); }
   }
   const prev = sel.value;
   sel.innerHTML = '';
@@ -2455,7 +2503,7 @@ function applyJsonFilter() {
     let obj;
     // 已编辑的条目按编辑后的内容参与筛选
     if (chatEdits.has(li)) { obj = chatEdits.get(li); }
-    else { try { obj = JSON.parse(line); } catch (_) { continue; } }
+    else { try { obj = JSON.parse(line); } catch (_) { continue; } }  // 行级容错，量大不刷日志
     const fv = fieldValueStr(obj, field);
     const fvLower = fv.toLowerCase();
     let hit = false;
@@ -2512,7 +2560,7 @@ function refreshFilteredStats() {
   if (!panel || !jsonlFilterLines) return;
   const entries = [];
   for (const line of jsonlFilterLines) {
-    try { entries.push(JSON.parse(line)); } catch (_) {}
+    try { entries.push(JSON.parse(line)); } catch (err) { console.warn('[MarkMate:renderer]', err); }
   }
   const stats = LLMDataset.computeStats(entries, jsonlFormat);
   stats.scopeAll = true;
@@ -2532,7 +2580,7 @@ async function exportJsonlResult() {
   const out = lines.map((line, i) => {
     const cachedIdx = idxMap ? idxMap[i] : i;
     if (chatEdits.has(cachedIdx)) {
-      try { return JSON.stringify(chatEdits.get(cachedIdx)); } catch (_) { return line; }
+      try { return JSON.stringify(chatEdits.get(cachedIdx)); } catch (_) { return line; }  // 行级容错
     }
     return line;
   });
@@ -2582,7 +2630,7 @@ function onChatEntryEdit(pageEntryIdx, fieldPath, newText) {
   let entry = chatEdits.get(cachedIdx);
   if (!entry) {
     try { entry = JSON.parse(jsonlCachedLines[cachedIdx]); }
-    catch (_) { entry = {}; }
+    catch (_) { entry = {}; }  // 行级容错，解析失败时用空对象兜底
   }
   setByPath(entry, fieldPath, newText);
   chatEdits.set(cachedIdx, entry);
@@ -2776,7 +2824,7 @@ function highlightCode() {
     return;
   }
   try { const html = Prism.highlight(raw, Prism.languages[lang], lang); codeEl.className = 'language-' + lang; codeEl.innerHTML = html; }
-  catch (_) { codeEl.className = ''; codeEl.textContent = raw; }
+  catch (err) { console.warn('[MarkMate:highlight]', err); codeEl.className = ''; codeEl.textContent = raw; }
   highlight.scrollTop = codeEditor.scrollTop;
   highlight.scrollLeft = codeEditor.scrollLeft;
 }
@@ -2880,7 +2928,7 @@ function absolutizeImgsInHtml(html, baseDir) {
     if (/^(https?:|file:|data:)/i.test(src)) return m;
     if (!baseDir) return m;
     try { let abs = src; if (abs.startsWith('./')) abs = abs.slice(2); const sep = baseDir.endsWith('/') ? '' : '/'; const url = 'file://' + baseDir + sep + abs; return `<img${pre} src=${q}${url}${q}`; }
-    catch (_) { return m; }
+    catch (err) { console.warn('[MarkMate:export-img-rewrite]', err); return m; }
   });
 }
 function buildFullHtml(bodyHtml, vditorCss) {
@@ -3017,24 +3065,24 @@ async function restoreAppDataIfNeeded() {
     }
     // localStorage 有数据但 JSON 为空 → 同步到 JSON（老用户升级场景）
     if (hasLsRecent && !hasJsonRecent) {
-      try { window.markmate.syncAppData('recentFiles', JSON.parse(lsRecent)); } catch (_) {}
+      try { window.markmate.syncAppData('recentFiles', JSON.parse(lsRecent)); } catch (err) { console.warn('[MarkMate:renderer]', err); }
     }
     if (hasLsFav && !hasJsonFav) {
-      try { window.markmate.syncAppData('favorites', JSON.parse(lsFav)); } catch (_) {}
+      try { window.markmate.syncAppData('favorites', JSON.parse(lsFav)); } catch (err) { console.warn('[MarkMate:renderer]', err); }
     }
-  } catch (_) {}
+  } catch (err) { console.warn('[MarkMate:renderer]', err); }
 }
 
 function getRecentFiles() {
   try {
     const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
-    if (Array.isArray(list) && list.length > MAX_RECENT) { list.length = MAX_RECENT; try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (_) {} }
+    if (Array.isArray(list) && list.length > MAX_RECENT) { list.length = MAX_RECENT; try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (err) { console.warn('[MarkMate:renderer]', err); } }
     return Array.isArray(list) ? list : [];
-  } catch (_) { return []; }
+  } catch (err) { console.warn('[MarkMate:localStorage]', err); return []; }
 }
 function saveRecentFiles(list) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(list));
-  try { window.markmate.syncAppData('recentFiles', list); } catch (_) {}
+  try { window.markmate.syncAppData('recentFiles', list); } catch (err) { console.warn('[MarkMate:renderer]', err); }
 }
 function addRecentFile(fp) {
   if (!fp) return;
@@ -3043,10 +3091,10 @@ function addRecentFile(fp) {
   if (list.length > MAX_RECENT) list.length = MAX_RECENT;
   saveRecentFiles(list);
 }
-function getFavorites() { try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch (_) { return []; } }
+function getFavorites() { try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch (err) { console.warn('[MarkMate:localStorage]', err); return []; } }
 function saveFavorites(list) {
   localStorage.setItem(FAV_KEY, JSON.stringify(list));
-  try { window.markmate.syncAppData('favorites', list); } catch (_) {}
+  try { window.markmate.syncAppData('favorites', list); } catch (err) { console.warn('[MarkMate:renderer]', err); }
 }
 function isFavorited(fp) { return getFavorites().some(f => f.path === fp); }
 function toggleFavorite(fp, name) {
@@ -3583,7 +3631,7 @@ if (versionsRestoreBtn) versionsRestoreBtn.addEventListener('click', () => {
 });
 if (versionsCopyBtn) versionsCopyBtn.addEventListener('click', async () => {
   if (currentVersionContent == null) return;
-  try { await navigator.clipboard.writeText(currentVersionContent); showQuickToast('已复制到剪贴板'); } catch (_) { showQuickToast('复制失败'); }
+  try { await navigator.clipboard.writeText(currentVersionContent); showQuickToast('已复制到剪贴板'); } catch (err) { console.warn('[MarkMate:clipboard]', err); showQuickToast('复制失败'); }
 });
 window.markmate.onShowVersions(() => showVersions());
 
@@ -3597,7 +3645,7 @@ let pendingDraft = null;
   try {
     const res = await window.markmate.checkDraft();
     if (res && res.has && res.content) { pendingDraft = res; if (draftBanner) draftBanner.classList.remove('hidden'); }
-  } catch (_) {}
+  } catch (err) { console.warn('[MarkMate:renderer]', err); }
 })();
 
 if (draftRestoreBtn) draftRestoreBtn.addEventListener('click', () => {

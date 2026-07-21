@@ -9,8 +9,10 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- 顶部拖拽区（macOS 红绿灯下方留白） -->
-  <div id="drag-bar">
+  <!-- 顶部拖拽区（macOS 红绿灯下方留白，Windows 由原生标题栏接管 → 不显示） -->
+  <div id="drag-bar"></div>
+  <!-- 顶部工具按钮区（双平台常驻，与拖拽区解耦，避免 Windows 上随 drag-bar 一起被隐藏） -->
+  <div id="toolbar">
     <button id="find-btn" type="button" title="文档内搜索（⌘F）" aria-label="文档内搜索">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -97,12 +99,12 @@
       <div id="json-viewer-wrap" style="display:none">
         <div id="json-viewer-toolbar">
           <div class="json-toolbar-left">
-            <button class="json-view-btn active" data-view="tree" title="树形视图" onclick="switchJsonView('tree')">📊 树形</button>
-            <button class="json-view-btn" data-view="chat" title="对话视图（Alpaca / ShareGPT / Messages）" onclick="switchJsonView('chat')">💬 对话</button>
-            <button class="json-view-btn" data-view="raw" title="原始文本编辑" onclick="switchJsonView('raw')">📝 原始</button>
+            <button class="json-view-btn active" data-view="tree" title="树形视图">📊 树形</button>
+            <button class="json-view-btn" data-view="chat" title="对话视图（Alpaca / ShareGPT / Messages）">💬 对话</button>
+            <button class="json-view-btn" data-view="raw" title="原始文本编辑">📝 原始</button>
             <span class="json-toolbar-sep"></span>
-            <button id="json-collapse-all" title="全部折叠" onclick="jsonCollapseAll()">⊟ 折叠</button>
-            <button id="json-expand-all" title="全部展开" onclick="jsonExpandAll()">⊞ 展开</button>
+            <button id="json-collapse-all" title="全部折叠">⊟ 折叠</button>
+            <button id="json-expand-all" title="全部展开">⊞ 展开</button>
             <span class="json-toolbar-sep"></span>
             <button id="json-stats-toggle" title="显示/隐藏统计面板">📈 统计</button>
             <button id="json-filter-toggle" title="按字段筛选条目">🔍 筛选</button>
@@ -142,12 +144,12 @@
         </div>
         <!-- JSONL 分页 -->
         <div id="jsonl-pager" style="display:none">
-          <button id="jsonl-prev" disabled onclick="changeJsonlPage(-1)">◀ 上一页</button>
+          <button id="jsonl-prev" disabled>◀ 上一页</button>
           <span id="jsonl-page-info">第 1 页</span>
-          <button id="jsonl-next" onclick="changeJsonlPage(1)">下一页 ▶</button>
+          <button id="jsonl-next">下一页 ▶</button>
           <span class="jsonl-jump-wrap">
             跳至 <input id="jsonl-jump-input" type="number" min="1" title="页码"> 页
-            <button id="jsonl-jump-btn" onclick="jumpToJsonlPage()">Go</button>
+            <button id="jsonl-jump-btn">Go</button>
           </span>
         </div>
       </div>

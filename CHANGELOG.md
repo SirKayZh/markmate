@@ -11,6 +11,31 @@
 
 ---
 
+## [2.1.0] - 2026-07-21
+
+### 重构 Refactor
+- **Tab 状态管理封装（消除「改 4 处」维护债）**：此前每个 Tab 的状态字段（filePath / content / dirty / codeMode / jsonView / jsonlPage / scrollTop / cursorPos / 标注缓存）散落在 3 个同步点——对象字面量创建、`saveCurrentTabState` 序列化、`switchToTab` 反序列化——加一个字段要同步改 3 处，漏一处就是「切 Tab 丢数据」类 bug（v2.0.0 已修过多例）。现收敛为单一事实来源：
+  - `makeTab()` 工厂函数定义完整字段 schema，所有 Tab 一律经此创建（禁止散落对象字面量）。
+  - `captureTabState()`（活动态 → tab 对象）与 `restoreTabState()`（tab 对象 → 活动态）成为唯一双向同步点。
+  - 今后新增 per-tab 字段只需改 2 处：`makeTab` 加默认值 + capture/restore 加一行同步。
+  - 行为完全等价，CDP 真机验证 per-tab 的 dirty / content / codeMode / jsonView 隔离全部正确、JSONL 数据集打开正常、全程 0 未捕获异常。
+
+### 定位更新
+- **MarkPad 正式升级为「大模型时代的文本编辑器」**：从 v1.0 的「轻量 Markdown 编辑器」到 v2.0 的「Markdown + JSON/YAML/XML 查看 + LLM 数据集标注」，定位漂移已是事实。v2.1.0 起明确承认这一升级——单应用打通 MD 写作、JSONL 数据浏览、JSON 修复、数据标注、多格式导出全链路，**LLM 数据集标注功能不再单独拆出**。
+- 体积预算随定位同步放宽（详见内部 `markpad-dev/DESIGN_PRINCIPLES.md §0.1`）：自有源码 2500 行 → 9000 行；运行时依赖 3 个 → 7 个。**反臃肿原则不撤销**，只是适用范围扩大。
+
+### 安全 Security
+- **新增 Content Security Policy**：通过 `session.defaultSession.webRequest.onHeadersReceived` 在主进程注入 CSP，限制 `connect-src` 仅允许 GitHub（autoUpdater）、`object-src 'none'` 禁用插件、`script-src 'self' file: 'unsafe-inline'`（不再允许 `unsafe-eval`）。此前渲染进程无 CSP，存在 XSS 风险。
+- **Vditor 改用本地 lute 引擎**：`initVditor` 显式配置 `cdn: '../node_modules/vditor'`，从本地加载 lute.min.js，不再走 `https://unpkg.com/vditor@x/dist/js/lute/lute.min.js`。修复 CSP 收紧后 vditor 因无法加载 CDN 脚本而部分功能不可用的问题；离线场景也稳定。
+- **JSON viewer 去内联 `onclick`**：8 处内联 `onclick="switchJsonView/jsonCollapseAll/jsonExpandAll/changeJsonlPage/jumpToJsonlPage"` 改为在 `bindJsonViewerEvents()` 中统一 `addEventListener`。便于后续 CSP 收紧到 nonce-based 严格策略。
+
+### 修复 Fixed
+- **🔴 Windows 顶部 5 按钮全部丢失**：此前 `body:not([data-platform="darwin"]) #drag-bar { display: none !important; }` 把整个 `#drag-bar` 隐藏，连带其中的 5 个按钮（搜索 / 收藏 / 源码切换 / 格式化 / 主题切换）也消失，Windows 用户只能从菜单栏访问。现把 `#drag-bar` 拆为纯拖拽区 + 独立的 `#toolbar` 按钮容器，Windows 上隐藏拖拽区但保留按钮区作为顶部工具条。
+- **🟠 关闭窗口超时太短导致丢数据**：渲染进程未响应超时回退从 3 秒拉长到 30 秒。此前用户面对「未保存的更改」三态确认框思考超过 3 秒会被强制关闭，等于绕过保存确认丢数据。
+- **静默吞错改为记录日志**：`main.js` 和 `renderer.js` 中 50 余处 `catch (_) {}` / `catch (_) { /* ignore */ }` 改为 `catch (err) { console.warn/error('[MarkMate:context]', err); ... }`。关键 IO/解析失败用 `console.error`，资源清理/探测失败用 `console.warn`，JSONL 行级容错保留 `catch (_)`（量大不刷日志）并加注释说明。
+
+---
+
 ## [2.0.0] - 2026-07-14
 
 ### 新增 Added

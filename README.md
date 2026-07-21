@@ -149,12 +149,12 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 Download from [Releases](https://github.com/SirKayZh/markmate/releases):
 
 **macOS:**
-- Apple Silicon (M1/M2/M3/M4…): `MarkMate-2.0.0-arm64.dmg`
-- Intel: `MarkMate-2.0.0-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkMate-2.1.0-arm64.dmg`
+- Intel: `MarkMate-2.1.0-x64.dmg`
 
 **Windows:**
-- `MarkMate-2.0.0-x64-setup.exe` — NSIS installer (recommended)
-- `MarkMate-2.0.0-x64-portable.exe` — standalone, no install needed
+- `MarkMate-2.1.0-x64-setup.exe` — NSIS installer (recommended)
+- `MarkMate-2.1.0-x64-portable.exe` — standalone, no install needed
 
 > The app is **not code-signed / notarized** on either platform.
 >

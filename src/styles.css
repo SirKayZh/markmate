@@ -46,11 +46,29 @@ html, body {
 
 /* Windows: 隐藏自定义 drag-bar，使用原生标题栏 */
 body:not([data-platform="darwin"]) #drag-bar { display: none !important; }
-body:not([data-platform="darwin"]) #app { height: calc(100vh - 36px - 26px); } /* 无需减去拖拽条 */
+body:not([data-platform="darwin"]) #app { height: calc(100vh - 28px - 36px - 26px); } /* 工具条 + 状态栏，drag-bar 不占位 */
 
-/* 右上角按钮组共享样式 */
-#drag-bar button {
+/* 顶部工具按钮容器：与 #drag-bar 解耦，双平台常驻。
+   macOS 下浮在 drag-bar 之上（absolute）；Windows 下作为独立顶部条（static 流式）。
+   修复：此前 5 个按钮塞在 #drag-bar 内，Windows 整个 display:none 时按钮全部丢失。 */
+#toolbar {
+  position: absolute;
+  top: 0; right: 0;
+  height: 28px;
+  width: 100%;
   -webkit-app-region: no-drag;
+  pointer-events: none;       /* 容器本身不拦截事件，让 drag-bar 在 macOS 仍可拖拽 */
+  z-index: 10;
+}
+body:not([data-platform="darwin"]) #toolbar {
+  position: relative;          /* Windows: 独立顶部条，不再浮在 drag-bar 上 */
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  pointer-events: auto;
+}
+
+/* 右上角按钮组共享样式（容器选择器从 #drag-bar 改为 #toolbar） */
+#toolbar button {
   position: absolute;
   top: 4px;
   width: 22px;
@@ -65,12 +83,13 @@ body:not([data-platform="darwin"]) #app { height: calc(100vh - 36px - 26px); } /
   cursor: pointer;
   border-radius: 5px;
   transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  pointer-events: auto;        /* 按钮可点击（覆盖 #toolbar 的 pointer-events:none） */
 }
-#drag-bar button:hover {
+#toolbar button:hover {
   background: rgba(127, 127, 127, 0.15);
   color: var(--text);
 }
-#drag-bar button:active {
+#toolbar button:active {
   transform: scale(0.92);
 }
 
@@ -87,6 +106,9 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   height: calc(100vh - 28px - 36px - 26px); /* 减去拖拽条 + Tab栏 + 状态栏 */
   overflow: hidden;
 }
+
+/* Windows: drag-bar 隐藏后，工具条占位 28px（已在上方 #toolbar 规则中给出 height），
+   app 区高度公式同 macOS（28 + 36 + 26）。 */
 
 /* 大纲侧栏 */
 #outline {
@@ -1032,7 +1054,7 @@ mark.mp-find-current {
   position: absolute;
   top: 4px;
   right: 135px;
-  /* 关键：必须显式覆盖 #drag-bar button 的 width:22px，否则文字会被挤成竖排 "格/式/化" */
+  /* 关键：必须显式覆盖 #toolbar button 的 width:22px，否则文字会被挤成竖排 "格/式/化" */
   width: auto;
   min-width: 54px;
   height: 22px;
@@ -1058,13 +1080,13 @@ mark.mp-find-current {
   color: var(--text);
   border-color: var(--text);
 }
-/* 置灰：drag-bar 内任何按钮处于 disabled 时统一样式（点击无反应，光标提示） */
-#drag-bar button[disabled] {
+/* 置灰：toolbar 内任何按钮处于 disabled 时统一样式（点击无反应，光标提示） */
+#toolbar button[disabled] {
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: auto;  /* 保留 pointer 以让 title 在 hover 时显示 */
 }
-#drag-bar button[disabled]:hover {
+#toolbar button[disabled]:hover {
   background: transparent;
   color: var(--status-text);
 }

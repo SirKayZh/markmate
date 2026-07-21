@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme, protocol } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme, protocol, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -79,12 +79,14 @@ function createWindow(initialTab) {
     if (ctx.closingInProgress) { e.preventDefault(); return; }
     e.preventDefault();
     ctx.closingInProgress = true;
-    // 3 秒超时回退：渲染进程崩溃/挂起时强制关闭，防止窗口永久死锁
+    // 30 秒超时回退：渲染进程崩溃/挂起时强制关闭，防止窗口永久死锁。
+    // 此前为 3 秒——但用户面对"未保存的更改"三态确认框思考超过 3 秒就会被强关丢数据。
+    // 30 秒足够覆盖正常思考 + 用户主动离开的场景；崩溃场景由 webContents crashed 事件额外兜底。
     ctx._closeTimer = setTimeout(() => {
       ctx.allowClose = true;
       ctx.closingInProgress = false;
       if (!win.isDestroyed()) win.close();
-    }, 3000);
+    }, 30000);
     if (win.webContents) {
       win.webContents.send('confirm-close');
     } else {
@@ -123,7 +125,7 @@ function formatCodeText(raw, codeLang) {
         const t = line.trim();
         if (!t) return '';
         try { return JSON.stringify(JSON.parse(t)); }
-        catch (_) { return line; }
+        catch (_) { return line; }  // 行级 JSON 解析失败：保留原行（JSONL 格式化逐行容错，量大不刷日志）
       }).filter((v, i, arr) => !(v === '' && i === arr.length - 1)).join('\n') + '\n';
       return { ok: true, text: out, changed: out !== src };
     }
@@ -268,7 +270,7 @@ function normalizeImagePaths(content, mdPath) {
       const rel = path.relative(mdDir, abs);
       if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
       return './' + rel.split(path.sep).join('/');
-    } catch (_) { return null; }
+    } catch (err) { console.error('[MarkMate:io]', err); return null; }
   };
   content = content.replace(/(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g,
     (m, head, url, tail) => { const r = convert(url); return r ? head + r + tail : m; });
@@ -287,7 +289,7 @@ function expandImagePaths(content, mdPath) {
       const abs = path.resolve(mdDir, url);
       if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i.test(abs)) return null;
       return 'mpmedia://' + encodeURI(abs.split(path.sep).join('/'));
-    } catch (_) { return null; }
+    } catch (err) { console.error('[MarkMate:io]', err); return null; }
   };
   content = content.replace(/(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g,
     (m, head, url, tail) => { const r = convert(url); return r ? head + r + tail : m; });
@@ -410,7 +412,7 @@ ipcMain.handle('list-versions', async (event, { filePath } = {}) => {
         return { name: n, path: full, time: stat.mtimeMs, size: stat.size };
       })
       .sort((a, b) => b.time - a.time);
-  } catch (_) { return []; }
+  } catch (err) { console.error('[MarkMate]', err); return []; }
 });
 
 // 安全校验：确保路径在 userData 内，防止路径穿越读取/删除任意文件
@@ -462,7 +464,7 @@ ipcMain.handle('check-draft', async () => {
 ipcMain.handle('discard-draft', async (event, { draftPath }) => {
   if (!isPathInsideUserData(draftPath)) return { ok: false, error: 'Invalid draft path' };
   try { if (draftPath && fs.existsSync(draftPath)) fs.unlinkSync(draftPath); return { ok: true }; }
-  catch (_) { return { ok: false }; }
+  catch (err) { console.error('[MarkMate:autoSave]', err); return { ok: false }; }
 });
 
 // ============ 历史/草稿存储 ============
@@ -477,7 +479,7 @@ function readAppData() {
     if (fs.existsSync(APP_DATA_FILE)) {
       return JSON.parse(fs.readFileSync(APP_DATA_FILE, 'utf-8'));
     }
-  } catch (_) {}
+  } catch (err) { console.warn('[MarkMate]', err); }
   return { recentFiles: [], favorites: [] };
 }
 function writeAppData(data) {
@@ -486,7 +488,7 @@ function writeAppData(data) {
     const tmp = APP_DATA_FILE + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tmp, APP_DATA_FILE);
-  } catch (_) {}
+  } catch (err) { console.warn('[MarkMate]', err); }
 }
 // 首次启动时，如果 JSON 文件不存在但 localStorage 有数据（app:// origin 旧数据），
 // 尝试从 LevelDB 迁移（通过渲染进程在首次检测到空 localStorage 时从 IPC 拉取）
@@ -530,14 +532,14 @@ function snapshotVersion(fp, content) {
     const existing = fs.readdirSync(dir).filter(n => n.endsWith('.md')).sort();
     if (existing.length) {
       const last = path.join(dir, existing[existing.length - 1]);
-      try { const lastContent = fs.readFileSync(last, 'utf-8'); if (lastContent === content) return; } catch (_) {}
+      try { const lastContent = fs.readFileSync(last, 'utf-8'); if (lastContent === content) return; } catch (err) { console.warn('[MarkMate]', err); }
     }
     const file = path.join(dir, `${timestamp()}.md`);
     fs.writeFileSync(file, content, 'utf-8');
     const all = fs.readdirSync(dir).filter(n => n.endsWith('.md')).sort();
     while (all.length > MAX_VERSIONS_PER_FILE) {
       const oldest = all.shift();
-      try { fs.unlinkSync(path.join(dir, oldest)); } catch (_) {}
+      try { fs.unlinkSync(path.join(dir, oldest)); } catch (err) { console.warn('[MarkMate]', err); }
     }
   } catch (err) { console.error('[snapshot]', err); }
 }
@@ -555,7 +557,7 @@ function saveDraft(content, ctx) {
   } catch (err) { console.error('[draft]', err); }
 }
 function clearDraftIfAny(ctx) {
-  try { const winId = ctx ? getWinByCtx(ctx)?.id : 0; const file = path.join(getDraftDir(), draftFilename(winId)); if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}
+  try { const winId = ctx ? getWinByCtx(ctx)?.id : 0; const file = path.join(getDraftDir(), draftFilename(winId)); if (fs.existsSync(file)) fs.unlinkSync(file); } catch (err) { console.warn('[MarkMate]', err); }
 }
 
 // ============ 脏标记 / 关闭确认 ============
@@ -640,13 +642,13 @@ function absolutizeImageSrc(html, baseDir) {
     if (/^mpmedia:\/\//i.test(src)) { const abs = decodeURI(src.replace(/^mpmedia:\/\//i, '')); return `<img${pre} src=${q}file://${abs}${q}`; }
     if (/^(https?:|file:|data:)/i.test(src)) return m;
     if (!baseDir) return m;
-    try { const abs = path.resolve(baseDir, src); const url = 'file://' + abs.split(path.sep).join('/'); return `<img${pre} src=${q}${url}${q}`; } catch (_) { return m; }
+    try { const abs = path.resolve(baseDir, src); const url = 'file://' + abs.split(path.sep).join('/'); return `<img${pre} src=${q}${url}${q}`; } catch (err) { console.warn('[MarkMate:img-rewrite]', err); return m; }
   });
 }
 let cachedVditorCss = null;
 function loadVditorCss() {
   if (cachedVditorCss !== null) return cachedVditorCss;
-  try { const cssPath = path.join(__dirname, 'node_modules', 'vditor', 'dist', 'index.css'); cachedVditorCss = fs.readFileSync(cssPath, 'utf-8'); } catch (_) { cachedVditorCss = ''; }
+  try { const cssPath = path.join(__dirname, 'node_modules', 'vditor', 'dist', 'index.css'); cachedVditorCss = fs.readFileSync(cssPath, 'utf-8'); } catch (err) { console.warn('[MarkMate:vditor-css]', err); cachedVditorCss = ''; }
   return cachedVditorCss;
 }
 function wrapExportHtml(title, bodyHtml, opts = {}) {
@@ -680,7 +682,7 @@ ipcMain.handle('export-pdf', async (event, { html }) => {
     fs.writeFileSync(filePath, data);
     return { saved: true, path: filePath };
   } catch (err) { dialog.showErrorBox('导出 PDF 失败', String(err)); return { saved: false }; }
-  finally { if (pdfWin) try { pdfWin.destroy(); } catch (_) {} }
+  finally { if (pdfWin) try { pdfWin.destroy(); } catch (err) { console.warn('[MarkMate]', err); } }
 });
 
 ipcMain.handle('export-docx', async (event, { buffer }) => {
@@ -738,7 +740,7 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
     } else {
       // 窗口被系统 clamp 了（Windows 无 enableLargerThanScreen）
       console.warn('[export-png] window clamped, retry @1x');
-      try { expWin.webContents.setZoomFactor(1); } catch (_) {}
+      try { expWin.webContents.setZoomFactor(1); } catch (err) { console.warn('[MarkMate]', err); }
       await new Promise(r => setTimeout(r, 150));
       checkTimeout();
       expWin.setContentSize(targetW, targetH);
@@ -752,7 +754,7 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
         // Windows: 尝试逐级降低 zoom 适配内容
         let winFit = false;
         for (const z of [0.7, 0.5, 0.35]) {
-          try { expWin.webContents.setZoomFactor(z); } catch (_) { break; }
+          try { expWin.webContents.setZoomFactor(z); } catch (err) { console.warn('[MarkMate:zoom]', err); break; }
           await new Promise(r => setTimeout(r, 150));
           checkTimeout();
           expWin.setContentSize(targetW, targetH);
@@ -776,7 +778,7 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
     fs.writeFileSync(filePath, buf);
     return { saved: true, path: filePath };
   } catch (err) { dialog.showErrorBox('导出长图失败', String(err)); return { saved: false }; }
-  finally { if (expWin) try { expWin.destroy(); } catch (_) {} }
+  finally { if (expWin) try { expWin.destroy(); } catch (err) { console.warn('[MarkMate]', err); } }
 });
 
 ipcMain.handle('get-export-resources', async (event) => {
@@ -984,7 +986,7 @@ ipcMain.handle('list-directory', async (event, dirPath) => {
       .filter(e => e.isDirectory() || /\.(md|markdown|mdown|mkd|txt)$/i.test(e.name) || codeExtRe.test(e.name))
       .map(e => ({ name: e.name, isDir: e.isDirectory(), path: path.join(dirPath, e.name) }))
       .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : (a.isDir ? -1 : 1)));
-  } catch (_) { return []; }
+  } catch (err) { console.error('[MarkMate]', err); return []; }
 });
 
 ipcMain.handle('get-recent-files', async () => {
@@ -1057,9 +1059,9 @@ function fileFromArgv(argv) {
   for (const a of argv) {
     if (a.startsWith('-')) continue;
     if (a === '.' || a === __dirname || a === process.execPath) continue;
-    try { if (!fs.existsSync(a)) continue; } catch (_) { continue; }
+    try { if (!fs.existsSync(a)) continue; } catch (err) { console.warn('[MarkMate:argv]', err); continue; }
     // 排除明显的非文件路径（目录、Electron 内部路径）
-    try { if (fs.statSync(a).isDirectory()) continue; } catch (_) { continue; }
+    try { if (fs.statSync(a).isDirectory()) continue; } catch (err) { console.warn('[MarkMate:argv]', err); continue; }
     if ((/\.(md|markdown|mdown|txt)$/i.test(a) || codeExtRe.test(a))) return a;
   }
   return null;
@@ -1072,6 +1074,32 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
+  // ============ Content Security Policy ============
+  // 渐进式 CSP：先收紧 connect-src（防数据外泄）与 object-src（防插件），
+  // script-src 暂时放行 'unsafe-inline'（vditor/prism 等第三方库依赖），
+  // 后续可逐步收紧到 nonce-based。
+  // 注：file:// 协议下 'self' 含义不稳，显式补 file:/data:/blob:/mpmedia:。
+  const csp = [
+    "default-src 'self' file: data: blob: mpmedia:",
+    "script-src 'self' file: 'unsafe-inline'",
+    "style-src 'self' file: 'unsafe-inline'",
+    "img-src 'self' file: data: blob: mpmedia: https:",
+    "connect-src 'self' file: data: https://api.github.com https://github.com https://*.githubusercontent.com",
+    "font-src 'self' file: data:",
+    "worker-src 'self' file: blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'"
+  ].join('; ');
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp]
+      }
+    });
+  });
+
   // ============ 版本升级（electron-updater）============
   // 懒加载，避免在 app ready 前访问 app.getVersion()
   const { autoUpdater } = require('electron-updater');
@@ -1140,7 +1168,7 @@ app.whenReady().then(() => {
       const isText = /^(text\/|application\/javascript|application\/json|image\/svg)/.test(mime);
       const ct = isText ? mime + '; charset=utf-8' : mime;
       return new Response(data, { headers: { 'Content-Type': ct } });
-    } catch (_) { return new Response('Not Found', { status: 404 }); }
+    } catch (err) { console.warn('[MarkMate:mpmedia]', err); return new Response('Not Found', { status: 404 }); }
   });
 
   protocol.handle('mpmedia', (request) => {
@@ -1165,7 +1193,7 @@ app.whenReady().then(() => {
         '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.avif': 'image/avif',
       }[ext] || 'application/octet-stream';
       return new Response(data, { headers: { 'Content-Type': mime } });
-    } catch (_) { return new Response('Not Found', { status: 404 }); }
+    } catch (err) { console.warn('[MarkMate:mpmedia]', err); return new Response('Not Found', { status: 404 }); }
   });
 
   createWindow();
