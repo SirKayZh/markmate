@@ -3481,15 +3481,29 @@ window.markmate.onUpdateStatus((info) => {
       break;
     case 'available':
       if (!banner || !msgEl) return;
-      msgEl.textContent = `MarkMate ${info.version} 可用，要现在下载吗？`;
-      viewBtn.textContent = '下载更新';
       viewBtn.disabled = false;
       viewBtn.style.display = 'inline-block';
-      viewBtn.onclick = () => {
-        msgEl.textContent = '正在下载…';
-        viewBtn.disabled = true;
-        window.markmate.startDownloadUpdate();
-      };
+      if (window.markmate.platform === 'darwin') {
+        // macOS 降级路径：electron-updater 下载完会校验代码签名，而本项目目前只做
+        // ad-hoc 签名（没有 Apple Developer ID），验签会失败。与其让用户点了"下载更新"
+        // 再收到一条失败提示，不如直接引导去下载页手动更新。
+        // 等哪天配了 Developer ID + 公证，把这个分支去掉即可恢复自动下载。
+        msgEl.textContent = `MarkMate ${info.version} 已发布，前往下载页更新`;
+        viewBtn.textContent = '前往下载';
+        viewBtn.onclick = () => {
+          // window.open 已被主进程的 setWindowOpenHandler 接管，会交给系统浏览器打开
+          window.open('https://sirkayzh.github.io/markmate/download.html');
+          banner.classList.add('hidden');
+        };
+      } else {
+        msgEl.textContent = `MarkMate ${info.version} 可用，要现在下载吗？`;
+        viewBtn.textContent = '下载更新';
+        viewBtn.onclick = () => {
+          msgEl.textContent = '正在下载…';
+          viewBtn.disabled = true;
+          window.markmate.startDownloadUpdate();
+        };
+      }
       banner.classList.remove('hidden');
       dismissBtn.onclick = () => { banner.classList.add('hidden'); updateDismissed = true; };
       break;
