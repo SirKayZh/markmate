@@ -7,7 +7,7 @@
 ![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows-blue)
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![release](https://img.shields.io/badge/release-v2.0.0-3b82f6)
+![release](https://img.shields.io/badge/release-v2.1.1-3b82f6)
 
 **English** · [简体中文](README.zh-CN.md) · [🌐 Documentation](https://sirkayzh.github.io/markmate)
 
@@ -140,7 +140,7 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 - **Drag & drop to open** — drag files onto the window, Dock icon, or closed app
 - **File association** — registered handler for `.md` `.json` `.jsonl` `.yml` `.yaml` `.xml` `.txt`; set as default in Finder
 - **Native feel** — inset traffic lights, document-dirty dot, recent files menu, word count in status bar
-- **Auto-update** — built-in version check via GitHub Releases; one-click download + restart (v2.0.0+)
+- **Auto-update** — built-in version check via GitHub Releases; one-click download + restart on Windows. On macOS the app is not notarized, so it links you to the download page instead (v2.0.0+)
 
 ---
 
@@ -149,12 +149,12 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 Download from [Releases](https://github.com/SirKayZh/markmate/releases):
 
 **macOS:**
-- Apple Silicon (M1/M2/M3/M4…): `MarkMate-2.1.0-arm64.dmg`
-- Intel: `MarkMate-2.1.0-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkMate-2.1.1-arm64.dmg`
+- Intel: `MarkMate-2.1.1-x64.dmg`
 
 **Windows:**
-- `MarkMate-2.1.0-x64-setup.exe` — NSIS installer (recommended)
-- `MarkMate-2.1.0-x64-portable.exe` — standalone, no install needed
+- `MarkMate-2.1.1-x64-setup.exe` — NSIS installer (recommended)
+- `MarkMate-2.1.1-x64-portable.exe` — standalone, no install needed
 
 > The app is **not code-signed / notarized** on either platform.
 >
