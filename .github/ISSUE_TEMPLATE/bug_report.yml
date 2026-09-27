@@ -13,7 +13,7 @@ body:
     attributes:
       label: MarkMate Version / 版本
       description: Which version of MarkMate are you using? (Help → About)
-      placeholder: "e.g. 1.6.1"
+      placeholder: "e.g. 2.1.0"
     validations:
       required: true
   - type: dropdown

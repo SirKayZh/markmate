@@ -106,9 +106,16 @@ const LLMDataset = (() => {
   }
 
   // ── 统计 ──
-  function computeStats(entries, format) {
+  function computeStats(rawEntries, format) {
+    // 真实数据集里会有单独一行 "null"（合法 JSON）或数字/字符串行，
+    // JSON.parse 出来就是 null/非对象。不过滤的话后面 e.messages / Object.keys(e)
+    // 会抛 TypeError，异常从这里冒泡出去会中断整个查看器的渲染流程
+    // （统计面板渲染一半、保存按钮状态错乱），而错误提示条又不显示，用户只会以为软件崩了。
+    const entries = (rawEntries || []).filter(e => e && typeof e === 'object');
+    const skipped = (rawEntries || []).length - entries.length;
     const stats = {
       totalEntries: entries.length,
+      skippedEntries: skipped,   // 供调用方提示"N 条格式异常已跳过"
       estimatedTokens: 0,
       fieldDist: {},       // 字段覆盖率
       format,
@@ -231,6 +238,18 @@ const LLMDataset = (() => {
 
     for (let i = start; i < end && i < entries.length; i++) {
       const entry = entries[i];
+      // null / 非对象行（数据集里常见单独一行 "null"）会让下面的取字段逻辑抛 TypeError，
+      // 中断整个列表渲染。跳过它们并留一张占位卡，让用户知道这一条有问题而不是凭空消失。
+      if (!entry || typeof entry !== 'object') {
+        const bad = document.createElement('div');
+        bad.className = 'json-chat-entry';
+        const badHead = document.createElement('div');
+        badHead.className = 'json-chat-entry-header';
+        badHead.textContent = `#${i + 1}  ⚠︎ 该行不是对象（${entry === null ? 'null' : typeof entry}），已跳过`;
+        bad.appendChild(badHead);
+        container.appendChild(bad);
+        continue;
+      }
       const cachedIdx = cachedIndexOf(i);
       const entryCard = document.createElement('div');
       entryCard.className = 'json-chat-entry';

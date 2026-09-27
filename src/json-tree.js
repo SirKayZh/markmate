@@ -227,8 +227,8 @@ const JSONTree = (() => {
    *  opts.expandDepth      — 默认展开深度（默认 2）
    *  opts.stringPreviewLimit — 字符串预览截断长度，超长显示展开按钮（默认 200） */
   function render(container, jsonObj, opts = {}) {
-    container.innerHTML = '';
     if (!container) return;
+    container.innerHTML = '';
     expandDepth = (typeof opts.expandDepth === 'number') ? opts.expandDepth : 2;
     STRING_PREVIEW_LIMIT = (typeof opts.stringPreviewLimit === 'number') ? opts.stringPreviewLimit : 200;
     const visited = new Set();

@@ -276,8 +276,21 @@ function getActiveTab() {
 // 捕获「活动态全局镜像」→ 写回 tab 对象。切走当前 tab 前调用。
 function captureTabState(tab) {
   if (!tab) return;
-  // 仅脏状态才重新读取内容（vditor.getValue() 对大文件很慢）
-  if (isDirty) tab.content = getEditorContent();
+  // 内容回写规则（踩过坑，别改回去）：
+  // 1) 不能用 isDirty 做条件。保存成功后 markDirty(false) 会把 isDirty 置 false，
+  //    此时切走就不回写，tab.content 还是打开时的旧内容；切回来 loadContent(tab.content)
+  //    把编辑器打回旧版，用户接着编辑就把旧内容写回磁盘 → 本次编辑永久丢失。
+  // 2) JSONL 分页视图下 codeEditor 只含当前页（50 行），必须用全量缓存构建整文件，
+  //    否则 tab.content 变成「仅当前页」，切回后 ⌘S 会把整个文件截断成一页。
+  // 3) 超大 JSON（jsonRawTooBig）时 codeEditor 是空的，绝不能用空串覆盖已有内容。
+  if (currentCodeMode && currentCodeMode.lang === 'jsonl' && jsonlCachedLines) {
+    commitRawPageToCache();   // 先把原始视图当前页的改动并回缓存，否则切走就丢了
+    tab.content = buildJsonlContentFromEdits();
+  } else if (currentCodeMode && jsonRawTooBig) {
+    // 保留原 tab.content，不动
+  } else {
+    tab.content = getContentForSave();
+  }
   tab.dirty = isDirty;
   tab.codeMode = currentCodeMode;
   tab.filePath = currentFilePath;
@@ -339,6 +352,9 @@ async function switchToTab(tabId) {
     renderTabBar();
     return;
   }
+  // 切走前先废掉上一个 tab 排的自动保存定时器。
+  // 它若在切换后才触发，会把上一个 tab 的编辑器内容写进新 tab 的文件路径。
+  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
   // 切走前：当前 tab 在对话视图有未保存标注 → 三态确认（保存/放弃/取消）
   if (chatEdits && chatEdits.size > 0) {
     const action = await window.markmate.askChatEditsConfirm(chatEdits.size);
@@ -423,11 +439,13 @@ async function closeTab(tabId) {
     if (action === 'save') {
       // 先切到该 tab 保存（必须 await，否则 getEditorContent 可能读到旧 tab 的内容）
       if (activeTabId !== tabId) await switchToTab(tabId);
-      const content = isChatViewMode() ? buildJsonlContentFromEdits() : getEditorContent();
+      // JSONL 有全量缓存时用全量内容整文件回写，避免多页只存当前页覆盖丢数据
+      const isJsonlWithCache = !!(currentCodeMode && currentCodeMode.lang === 'jsonl' && jsonlCachedLines);
+      const content = (isChatViewMode() || isJsonlWithCache) ? buildJsonlContentFromEdits() : getContentForSave();
       const res = await window.markmate.saveContent(content, false);
       if (!res.saved) return;
       markDirty(false);
-      if (isChatViewMode() && chatEdits.size > 0) chatEdits = new Map();  // 关闭保存后清空编辑缓存
+      if ((isChatViewMode() || isJsonlWithCache) && chatEdits.size > 0) chatEdits = new Map();  // 关闭保存后清空编辑缓存
       if (res.path) {
         currentFilePath = res.path;
         tab.filePath = res.path;
@@ -470,12 +488,20 @@ function closeOtherTabs(keepTabId) {
 // 关闭右侧 tab
 function closeRightTabs(tabId) {
   const idx = tabs.findIndex(t => t.id === tabId);
-  const toClose = tabs.slice(idx + 1).filter(t => !t.dirty);
-  const skipped = tabs.slice(idx + 1).filter(t => t.dirty);
+  // idx 为 -1 时 slice(0) 会取到全部 tab，把当前 tab 自己也关掉
+  if (idx < 0) return;
+  const right = tabs.slice(idx + 1);
+  const toClose = right.filter(t => !t.dirty);
+  const skipped = right.filter(t => t.dirty);
+  // 关之前先判断激活的 tab 是否在待关列表里——漏了这步，activeTabId 会指向一个已被
+  // splice 掉的 tab：getActiveTab() 恒为 undefined，之后编辑内容不写进任何 tab（静默丢弃）、
+  // ⌘W 关不掉标签也没反馈，但打字仍会自动保存进那个界面上已经"关掉"的文件。
+  const activeWillClose = toClose.some(t => t.id === activeTabId);
   toClose.forEach(t => {
     const i = tabs.indexOf(t);
     if (i >= 0) tabs.splice(i, 1);
   });
+  if (activeWillClose) switchToTab(tabId);   // 落回右键时的锚点 tab
   renderTabBar();
   if (skipped.length > 0) showQuickToast(`${skipped.length} 个右侧 Tab 因未保存被保留`);
 }
@@ -582,8 +608,14 @@ tabContextMenu.addEventListener('click', (e) => {
 
 // 移到新窗口
 function detachTabToNewWindow(tab) {
-  // 保存当前编辑内容
-  if (tab.id === activeTabId) tab.content = getEditorContent();
+  // 保存当前编辑内容（走 getContentForSave，否则查找高亮的 == 会被带进新窗口并落盘）
+  if (tab.id === activeTabId) {
+    if (currentCodeMode && currentCodeMode.lang === 'jsonl' && jsonlCachedLines) {
+      tab.content = buildJsonlContentFromEdits();     // 分页视图不能只传当前页
+    } else if (!(currentCodeMode && jsonRawTooBig)) {
+      tab.content = getContentForSave();              // 超大 JSON 时保留原内容，不传空串
+    }
+  }
   window.markmate.openInNewWindow({
     filePath: tab.filePath,
     content: tab.content,
@@ -1279,7 +1311,12 @@ function renderFileSection(containerId, files, isFavSection) {
   // 事件委托已在 files-content 上统一绑定，不再逐元素加监听器
 }
 
-function escapeAttr(s) { return String(s).replace(/[&"'<>]/g, ''); }
+// HTML 属性值转义（值始终包在双引号内）。此前是直接删除特殊字符，
+// 会破坏含 & " ' < > 的真实文件路径（如 "A&B/note.md" → "AB/note.md" 打不开）。
+// 改为标准 HTML 实体转义，既安全又保真。
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+}
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
 }
@@ -1325,30 +1362,25 @@ function showFileContextMenu(fileItem, x, y) {
   if (rect.bottom > window.innerHeight) fileContextMenu.style.top = (window.innerHeight - rect.height - 4) + 'px';
 }
 
-function _handleFileListRightClick(e, source) {
+function _handleFileListRightClick(e) {
   const fileItem = e.target.closest('.file-item');
-  if (!fileItem) {
-    showQuickToast(`[${source}] 右键在: ${e.target.tagName}(非文件条目)`);
-    return;
-  }
+  if (!fileItem) return;
+  // 右键菜单目前仅对文件夹条目提供「在 Finder/文件夹中打开」
   if (fileItem.dataset.isDir) {
-    showQuickToast(`[${source}] ✅ 触发了! 文件夹: ${fileItem.dataset.path.split('/').pop()}`);
     e.preventDefault();
     showFileContextMenu(fileItem, e.clientX, e.clientY);
-  } else {
-    showQuickToast(`[${source}] 右键在文件: ${fileItem.dataset.path.split('/').pop()}(非文件夹)`);
   }
 }
 
 // contextmenu 事件（鼠标右键 / Ctrl+点击）
 document.getElementById('files-content').addEventListener('contextmenu', (e) => {
-  _handleFileListRightClick(e, 'ctx');
+  _handleFileListRightClick(e);
 });
 
 // mouseup 事件兜底（macOS 触控板双指点按）
 document.getElementById('files-content').addEventListener('mouseup', (e) => {
   if (e.button !== 2) return;
-  _handleFileListRightClick(e, 'mu');
+  _handleFileListRightClick(e);
 });
 
 // 隐藏文件列表右键菜单（复用全局 click 监听器）
@@ -1440,12 +1472,50 @@ let autoSaveTimer = null;
 let lastSavedContent = null;
 function scheduleAutoSave() {
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(doAutoSave, AUTO_SAVE_DEBOUNCE);
+  // 定时器必须记住是哪个 tab 排的。否则在 A 里打字后 1.5 秒内切到 B，
+  // 这个定时器会在 B 的上下文里触发：读到 B 的编辑器内容、写进 B 的文件路径。
+  // 若 B 是超大 JSON（codeEditor 为空），等于把 B 整个文件清成 0 字节。
+  const ownerTabId = activeTabId;
+  autoSaveTimer = setTimeout(() => {
+    autoSaveTimer = null;
+    if (ownerTabId !== activeTabId) return;   // 已切走 → 这次自动保存作废
+    doAutoSave();
+  }, AUTO_SAVE_DEBOUNCE);
 }
 function getEditorContent() {
   if (currentCodeMode) return codeEditor ? codeEditor.value : '';
   if (vditor && vditorReady) return vditor.getValue() || '';
   return '';
+}
+
+// 取「用于落盘」的内容——所有会写入磁盘或写入 tab.content 的地方都必须用这个，不要直接用 getEditorContent()。
+//
+// 原因：查找高亮是真实插入编辑器 contenteditable 的 <mark> 元素，而 vditor 开了 markdown.mark，
+// getValue() 会把 <mark> 反序列化成 Markdown 的 ==text==。⌘F 搜一次再保存，文件里所有命中词
+// 就被永久包上 ==，且每次搜不同词还会叠加。所以取值前必须先还原 DOM。
+// 取完按需重建高亮，不打断用户正在进行的搜索（保留命中项索引，仅不重新滚动）。
+//
+// 注意不要把这段逻辑塞进 getEditorContent()：那个函数被 updateStats 以 300ms 防抖高频调用，
+// 在里面反复拆建 DOM 会导致高亮闪烁并拖慢输入。
+function getContentForSave() {
+  let hadMarks = false;
+  // findHighlightMarks 等查找状态用 let 声明在文件后部，早期调用会命中 TDZ，用 try 兜住
+  try { hadMarks = !currentCodeMode && findHighlightMarks.length > 0; } catch (err) { hadMarks = false; }
+  if (!hadMarks) return getEditorContent();
+
+  const q = findInput ? findInput.value : '';
+  const keepIndex = findIndex;
+  clearFindHighlights();
+  const content = getEditorContent();
+  // 重建高亮，让查找栏保持可用
+  if (findActive && q) {
+    findMatches = highlightInCurrentView(q);
+    if (findMatches.length) {
+      findIndex = Math.min(Math.max(keepIndex, 0), findMatches.length - 1);
+      findMatches[findIndex].classList.add('mp-find-current');
+    }
+  }
+  return content;
 }
 
 // 当前是否为"分页局部视图"：JSONL 多页时 codeEditor 仅含当前页，
@@ -1459,6 +1529,37 @@ function isPagedPartialView() {
 // 判断当前是否处于 JSONL 对话视图（不是 tree/code 视图）
 function isChatViewMode() {
   return !!(currentCodeMode && currentCodeMode.lang === 'jsonl' && currentJsonView === 'chat');
+}
+
+// JSONL「原始」视图下把当前页的文本回写进 jsonlCachedLines 的对应区间。
+// 必须在任何取整文件内容（buildJsonlContentFromEdits）之前调用一次，否则：
+// buildJsonlContentFromEdits 只合并 chatEdits、完全不看 codeEditor.value，
+// 用户在原始视图里改的字会被 ⌘S 静默丢弃 —— 提示"保存成功"，写回去的却是原内容。
+// 返回 false 表示无法安全回写（行数被改动），调用方应放弃本次保存。
+function commitRawPageToCache() {
+  if (!(currentCodeMode && currentCodeMode.lang === 'jsonl')) return true;
+  if (currentJsonView !== 'raw') return true;
+  if (!jsonlCachedLines || !codeEditor) return true;
+
+  const pageLines = (codeEditor.value || '').split('\n').filter(l => l.trim());
+  const lines = jsonlActiveLines();
+  // 筛选生效时，页内第 i 行对应的是 jsonlCachedLines 里的 jsonlFilterIdx[i]，不是 i
+  const idxMap = jsonlFilterLines ? (jsonlFilterIdx || []) : null;
+  const start = jsonlPage * JSONL_PAGE_SIZE;
+  const end = Math.min(start + JSONL_PAGE_SIZE, lines.length);
+  const expected = end - start;
+
+  if (pageLines.length !== expected) {
+    // 行数变了就无法一一对应回原下标，强行写会错位覆盖掉别的条目
+    showQuickToast(`原始视图行数由 ${expected} 变为 ${pageLines.length}，无法安全回写；请用「导出」另存`);
+    return false;
+  }
+  for (let i = 0; i < expected; i++) {
+    const cachedIdx = idxMap ? idxMap[start + i] : (start + i);
+    if (cachedIdx == null || cachedIdx < 0 || cachedIdx >= jsonlCachedLines.length) continue;
+    jsonlCachedLines[cachedIdx] = pageLines[i];
+  }
+  return true;
 }
 
 // 将 chatEdits 合并到 jsonlCachedLines 后构建完整文件内容
@@ -1481,13 +1582,32 @@ async function doAutoSave() {
     setAutoSaveStatus('多页文件未自动保存（仅显示当前页）');
     return;
   }
-  const content = getEditorContent();
+  // 超大 JSON 走的是「不把全文塞进 textarea」的分支，codeEditor 是空的 → 绝不能自动保存
+  if (jsonRawTooBig) {
+    setAutoSaveStatus('大文件未自动保存（仅供查看）');
+    return;
+  }
+  // 结构化视图（tree/chat）下 codeEditor 的内容不代表整个文件
+  if (currentCodeMode && (currentCodeMode.lang === 'json' || currentCodeMode.lang === 'jsonl')
+      && currentJsonView && currentJsonView !== 'raw' && !jsonlCachedLines) {
+    return;
+  }
+  const content = getContentForSave();
+  // 最后一道保险：用空内容覆盖一个已有文件，在这个产品里永远不是合法操作
+  if (!content && currentFilePath) {
+    setAutoSaveStatus('已跳过一次异常的空内容保存');
+    return;
+  }
   if (content === lastSavedContent) return;
   try {
     const res = await window.markmate.autoSave(content);
     if (res && res.saved) {
       lastSavedContent = content;
       markDirty(false);
+      // 落盘成功后同步回 tab.content：markDirty(false) 之后 captureTabState 不再依赖 isDirty，
+      // 但这里显式回写可以保证「磁盘内容 == tab.content」这个不变量始终成立
+      const t = getActiveTab();
+      if (t) { t.content = content; t.dirty = false; }
       setAutoSaveStatus('已自动保存 · ' + nowHM());
     } else if (res && res.draft) {
       setAutoSaveStatus('草稿已暂存 · ' + nowHM());
@@ -1521,7 +1641,9 @@ function syncSourceFromVditor(immediate) {
   // 源码面板没显示时，没必要序列化全文同步（切到源码面板时会补一次 immediate）
   if (!sourceVisible && !immediate) return;
   if (sourceEditor.matches(':focus')) return;
-  const val = getEditorContent();
+  // 必须用 getContentForSave：否则查找高亮的 <mark> 会以 ==text== 形式显示在源码面板里，
+  // 用户一旦在源码面板里编辑，这些 == 会被反向 setValue 回 vditor，不保存就已经污染了文档。
+  const val = getContentForSave();
   if (sourceEditor.value === val) return;
   syncingFromVditor = true;
   sourceEditor.value = val;
@@ -1646,11 +1768,14 @@ function syncCaretToSource() {
   if (!rect.height && !rect.width) return; // 没有有效选区
   const edRect = ed.getBoundingClientRect();
   const caretTopInDoc = rect.top - edRect.top + ed.scrollTop;
-  if (ed.scrollHeight <= 0) return;
-  const ratio = caretTopInDoc / ed.scrollHeight;
+  // 比例基准统一用可滚动距离 (scrollHeight - clientHeight)，与 syncScrollRatio 一致，
+  // 避免光标同步源码面板时定位系统性偏移。
+  const edMax = ed.scrollHeight - ed.clientHeight;
+  if (edMax <= 0) return;
+  const ratio = caretTopInDoc / edMax;
   const srcMax = src.scrollHeight - src.clientHeight;
   if (srcMax <= 0) return;
-  src.scrollTop = Math.max(0, Math.min(ratio * src.scrollHeight, srcMax));
+  src.scrollTop = Math.max(0, Math.min(ratio * srcMax, srcMax));
 }
 
 function initScrollSync() {
@@ -1880,6 +2005,14 @@ async function initJsonView(rawContent, viewMode) {
   const lang = currentCodeMode && currentCodeMode.lang;
   const viewer = document.getElementById('json-viewer-wrap');
   if (!viewer) return;
+
+  // 剥掉 UTF-8 BOM。U+FEFF 不属于 JSON 语法空白，带 BOM 的第一行 JSON.parse 必然抛错，
+  // 而解析失败是被静默 catch 掉的 → 用户的第一条数据凭空消失，行数统计还是按全量算。
+  // Windows 侧工具（Excel 导出 / PowerShell Out-File / Python utf-8-sig）导出的 jsonl 默认带 BOM，很常见。
+  // 注意 String.trim() 按 ES 规范是包含 U+FEFF 的，所以格式检测一直正常 —— 这恰好掩盖了问题。
+  if (typeof rawContent === 'string' && rawContent.charCodeAt(0) === 0xFEFF) {
+    rawContent = rawContent.slice(1);
+  }
 
   // 重置上次文件的缓存
   jsonParsedObj = null;
@@ -2700,13 +2833,15 @@ async function saveChatEditsAndNext() {
 // 批量保存：用 chatEdits 覆盖 jsonlCachedLines 对应行，重建整文件写回原路径
 // opts.advance=true 时，保存成功后自动跳到下一页（供"保存并下一页"使用）
 let chatSaving = false;
+// 返回 { saved: boolean, failed: number }，供调用方（如 onRequestSave / 关窗流程）
+// 基于真实写盘结果判定，而非用 chatEdits.size 反推。
 async function saveChatEdits(opts = {}) {
-  if (chatSaving) return;
-  if (!currentCodeMode || currentCodeMode.lang !== 'jsonl') return;
-  if (chatEdits.size === 0) return;
+  if (chatSaving) return { saved: false, failed: chatEdits.size };
+  if (!currentCodeMode || currentCodeMode.lang !== 'jsonl') return { saved: false, failed: 0 };
+  if (chatEdits.size === 0) return { saved: true, failed: 0 };
   if (!currentFilePath) {
     showQuickToast('❌ 当前内容未关联文件，无法原地保存');
-    return;
+    return { saved: false, failed: chatEdits.size };
   }
   const advance = !!opts.advance;
   chatSaving = true;
@@ -2764,9 +2899,12 @@ async function saveChatEdits(opts = {}) {
       showQuickToast(`⚠️ 已保存 ${okCount} 条，${failed.length} 条失败（已高亮）`);
       highlightFailedChatEntries(failedSet);
     }
+    // 写盘成功；failed>0 表示部分条目序列化失败仍残留在 chatEdits
+    return { saved: true, failed: failed.length };
   } else {
     updateChatSaveBar();
     showQuickToast(`❌ 保存失败：${(res && res.error) || '未知错误'}`);
+    return { saved: false, failed: chatEdits.size };
   }
 }
 
@@ -2884,12 +3022,19 @@ window.markmate.onRequestSave(async ({ saveAs }) => {
   // 对话视图（JSONL）：codeEditor.value 是过期的当前页/上次 raw 文本，
   // 绝不能用它覆盖文件。改走对话标注的整文件回写逻辑。
   if (!saveAs && currentCodeMode && currentCodeMode.lang === 'jsonl' && currentJsonView === 'chat') {
-    if (chatEdits.size > 0) { await saveChatEdits(); }
-    else { setAutoSaveStatus('没有待保存的标注修改'); }
-    return { saved: chatEdits.size === 0 };
+    if (chatEdits.size > 0) {
+      const r = await saveChatEdits();
+      // 真实写盘结果：全部成功才算 saved（failed>0 表示有条目残留未写入）
+      return { saved: !!(r && r.saved && r.failed === 0) };
+    }
+    setAutoSaveStatus('没有待保存的标注修改');
+    return { saved: true };
   }
-  // 分页局部视图：codeEditor 仅含当前页，直接保存会覆盖整个文件 → 先警告确认
-  if (isPagedPartialView() && !saveAs) {
+  // JSONL（tree/raw 等非 chat 视图）：codeEditor 仅含当前页，用它保存/另存为都会丢失其余页。
+  // 优先用全量缓存行（合并未保存编辑）整文件回写；仅当无缓存时才退回 codeEditor。
+  const isJsonlWithCache = !!(currentCodeMode && currentCodeMode.lang === 'jsonl' && jsonlCachedLines);
+  // 分页局部视图「保存」：会覆盖原文件，仍保留确认（另存为写到新文件不需要此确认）。
+  if (isPagedPartialView() && !saveAs && !isJsonlWithCache) {
     const ok = await window.markmate.confirmOverwrite(
       `当前为多页 JSONL（共 ${jsonlTotalLines} 条），原始视图只显示第 ${jsonlPage + 1} 页。\n` +
       `保存会用当前页内容覆盖整个文件，其余页数据将丢失。\n\n` +
@@ -2900,10 +3045,26 @@ window.markmate.onRequestSave(async ({ saveAs }) => {
       return { saved: false, canceled: true };
     }
   }
-  const content = getEditorContent();
+  // 原始视图里的改动要先回写进行缓存，否则下面的 buildJsonlContentFromEdits 会把它丢掉
+  if (isJsonlWithCache && !commitRawPageToCache()) {
+    setAutoSaveStatus('已取消保存');
+    return { saved: false, canceled: true };
+  }
+  // JSONL 用全量内容（含未保存编辑）；其余走编辑器当前内容（必须用 getContentForSave 去掉查找高亮）
+  const content = isJsonlWithCache ? buildJsonlContentFromEdits() : getContentForSave();
   const res = await window.markmate.saveContent(content, saveAs);
   if (res.saved) {
     markDirty(false);
+    // 同步回 tab.content，保证「磁盘内容 == tab.content」，否则切走再切回会被旧内容打回
+    const savedTab = getActiveTab();
+    if (savedTab) { savedTab.content = content; savedTab.dirty = false; }
+    lastSavedContent = content;
+    // JSONL 保存后内容已落盘：让缓存与磁盘一致并清空未保存编辑标记
+    if (isJsonlWithCache && !saveAs) {
+      jsonlCachedLines = (content.split('\n').filter(l => l.trim()));
+      jsonlStatsCache = null;
+      if (chatEdits.size > 0) { chatEdits = new Map(); updateChatSaveBar(); }
+    }
     if (res.path) {
       currentFilePath = res.path;
       const tab = getActiveTab();
@@ -2999,8 +3160,10 @@ window.markmate.onConfirmClose(async () => {
     // 切换到该 tab 以获取最新编辑内容
     if (dt.id !== activeTabId) await switchToTab(dt.id);
 
-    // 分页局部视图保护：codeEditor 仅含当前页，直接保存会覆盖整文件
-    if (isPagedPartialView() && currentJsonView === 'raw') {
+    // JSONL 有全量缓存时，用全量内容整文件回写（不会丢其余页），无需覆盖确认。
+    const isJsonlWithCache = !!(currentCodeMode && currentCodeMode.lang === 'jsonl' && jsonlCachedLines);
+    // 分页局部视图保护：仅当无全量缓存、codeEditor 仅含当前页时才会覆盖丢数据 → 确认
+    if (isPagedPartialView() && currentJsonView === 'raw' && !isJsonlWithCache) {
       const ok = await window.markmate.confirmOverwrite(
         `当前为多页 JSONL（共 ${jsonlTotalLines} 条），原始视图只显示第 ${jsonlPage + 1} 页。\n` +
         `保存会用当前页内容覆盖整个文件，其余页数据将丢失。\n\n` +
@@ -3009,7 +3172,7 @@ window.markmate.onConfirmClose(async () => {
       if (!ok) { allSaved = false; break; }
     }
 
-    const content = isChatViewMode() ? buildJsonlContentFromEdits() : getEditorContent();
+    const content = (isChatViewMode() || isJsonlWithCache) ? buildJsonlContentFromEdits() : getContentForSave();
     const res = await window.markmate.saveContent(content, false);
     if (res.saved) {
       dt.dirty = false;
@@ -3114,7 +3277,8 @@ const qoResults = document.getElementById('quick-open-results');
 
 function showQuickOpen() {
   quickOpenActive = true; quickOpenIndex = 0;
-  if (qoOverlay) { qoOverlay.classList.remove('hidden'); if (qoOverlay.classList.contains('hidden')) qoOverlay.style.display = 'flex'; }
+  // 显隐由 .hidden 类控制（见 styles.css #quick-open-overlay.hidden），无需内联 display
+  if (qoOverlay) qoOverlay.classList.remove('hidden');
   if (qoInput) { qoInput.value = ''; qoInput.focus(); }
   renderQuickResults('');
 }
@@ -3582,6 +3746,9 @@ if (findNext) findNext.addEventListener('click', findGoNext);
 if (findCloseBtn) findCloseBtn.addEventListener('click', hideFind);
 window.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); showFind(); } if (e.key === 'Escape' && findActive && findInput && !findInput.matches(':focus')) hideFind(); }, true);
 window.markmate.onShowFind(() => showFind());
+
+// 菜单「关闭标签页」（⌘W/Ctrl+W）——菜单点击走此 IPC；快捷键另有 keydown 监听兜底
+window.markmate.onCloseActiveTab(() => { if (activeTabId) closeTab(activeTabId); });
 
 // ============ 历史版本 ============
 const versionsOverlay = document.getElementById('versions-overlay');

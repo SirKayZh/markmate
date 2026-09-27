@@ -9,7 +9,7 @@
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![release](https://img.shields.io/badge/release-v2.0.0-3b82f6)
 
-[English](README.md) · **简体中文** · [🌐 文档站](https://sirkyzh.github.io/markmate)
+[English](README.md) · **简体中文** · [🌐 文档站](https://sirkayzh.github.io/markmate)
 
 <p align="center">
   <img src="build/preview-icon.png" width="128" alt="MarkMate icon">
@@ -20,7 +20,7 @@
   &nbsp;
   <a href="https://github.com/SirKayZh/markmate/issues/new"><img src="https://img.shields.io/badge/🐛_报告_Bug-gray?style=for-the-badge" alt="报告 Bug"></a>
   &nbsp;
-  <a href="https://sirkyzh.github.io/markmate/feedback"><img src="https://img.shields.io/badge/📝_反馈问卷-gray?style=for-the-badge" alt="反馈"></a>
+  <a href="https://sirkayzh.github.io/markmate/feedback.html"><img src="https://img.shields.io/badge/📝_反馈问卷-gray?style=for-the-badge" alt="反馈"></a>
 </p>
 
 ---
@@ -230,14 +230,14 @@ MarkMate 是一款**本地优先**的编辑器 —— 你的文档永远不会�
 - 绝不收集、不上传、不存储任何文档内容。
 - 当前版本无埋点、无分析、无追踪。
 - 未来版本可能会在**明确征得你同意**的情况下匿名上报聚合使用数据，首次启动时弹窗说明，可随时拒绝或关闭。
-- 完整隐私政策：[sirkyzh.github.io/markmate/privacy](https://sirkyzh.github.io/markmate/privacy)
+- 完整隐私政策：[sirkayzh.github.io/markmate/privacy.html](https://sirkayzh.github.io/markmate/privacy.html)
 
 ## 💬 反馈与交流
 
 - 🐛 [提交 Bug / 功能建议](https://github.com/SirKayZh/markmate/issues/new)
-- 📝 [填写反馈问卷](https://sirkyzh.github.io/markmate/feedback)
+- 📝 [填写反馈问卷](https://sirkayzh.github.io/markmate/feedback.html)
 - 💡 [参与功能讨论](https://github.com/SirKayZh/markmate/discussions)
-- 🌐 [访问文档站点](https://sirkyzh.github.io/markmate)
+- 🌐 [访问文档站点](https://sirkayzh.github.io/markmate)
 
 ---
 

@@ -9,7 +9,7 @@
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![release](https://img.shields.io/badge/release-v2.0.0-3b82f6)
 
-**English** · [简体中文](README.zh-CN.md) · [🌐 Documentation](https://sirkyzh.github.io/markmate)
+**English** · [简体中文](README.zh-CN.md) · [🌐 Documentation](https://sirkayzh.github.io/markmate)
 
 <p align="center">
   <img src="build/preview-icon.png" width="128" alt="MarkMate icon">
@@ -20,7 +20,7 @@
   &nbsp;
   <a href="https://github.com/SirKayZh/markmate/issues/new"><img src="https://img.shields.io/badge/🐛_Report_Bug-gray?style=for-the-badge" alt="Report Bug"></a>
   &nbsp;
-  <a href="https://sirkyzh.github.io/markmate/feedback"><img src="https://img.shields.io/badge/📝_Feedback_Survey-gray?style=for-the-badge" alt="Feedback"></a>
+  <a href="https://sirkayzh.github.io/markmate/feedback.html"><img src="https://img.shields.io/badge/📝_Feedback_Survey-gray?style=for-the-badge" alt="Feedback"></a>
 </p>
 
 ---
@@ -230,14 +230,14 @@ MarkMate is **local-first** — your documents never leave your computer.
 - No document content is ever uploaded to any server.
 - No telemetry, no analytics, no tracking in the current version.
 - Future versions may offer **opt-in** anonymous usage stats with a clear consent dialog.
-- Full privacy policy: [sirkyzh.github.io/markmate/privacy](https://sirkyzh.github.io/markmate/privacy)
+- Full privacy policy: [sirkayzh.github.io/markmate/privacy.html](https://sirkayzh.github.io/markmate/privacy.html)
 
 ## 💬 Feedback & Community
 
 - 🐛 [Report a bug / Request a feature](https://github.com/SirKayZh/markmate/issues/new)
-- 📝 [Fill out the feedback survey](https://sirkyzh.github.io/markmate/feedback)
+- 📝 [Fill out the feedback survey](https://sirkayzh.github.io/markmate/feedback.html)
 - 💡 [Join the discussion](https://github.com/SirKayZh/markmate/discussions)
-- 🌐 [Visit documentation site](https://sirkyzh.github.io/markmate)
+- 🌐 [Visit documentation site](https://sirkayzh.github.io/markmate)
 
 ---
 

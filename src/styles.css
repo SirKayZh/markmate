@@ -4,6 +4,13 @@
   box-sizing: border-box;
 }
 
+/* 主题变量清单（6 个主题块必须保持同样的键，缺一个就会静默失效）：
+   --bg --bg-soft --text --border --accent --status-bg --status-text --source-bg
+   --hover --text-muted
+   --json-key --json-string --json-number --json-boolean --json-null
+   注意：CSS 自定义属性缺失时，var() 属于 invalid at computed-value time ——
+   background 这类非继承属性会回落成 transparent（hover 高亮直接消失），
+   color 这类继承属性会回落成父级颜色（次要文本退化成正文色）。都是静默失效，很难察觉。 */
 :root {
   --bg: #ffffff;
   --bg-soft: #f7f7f8;
@@ -13,6 +20,13 @@
   --status-bg: #fafafa;
   --status-text: #8a8a8e;
   --source-bg: #fbfbfc;
+  --hover: rgba(0, 0, 0, 0.05);
+  --text-muted: #8b949e;
+  --json-key: #0451a5;
+  --json-string: #0a8;
+  --json-number: #0984e3;
+  --json-boolean: #a855f7;
+  --json-null: #999;
 }
 
 body.dark {
@@ -24,6 +38,16 @@ body.dark {
   --status-bg: #1a1a1a;
   --status-text: #777;
   --source-bg: #1a1a1c;
+  --hover: rgba(255, 255, 255, 0.07);
+  --text-muted: #9ca3af;
+  /* JSON 树的暗色配色跟 raw 视图的 Prism 暗色主题保持一致（见 body.dark #code-highlight 那几条）。
+     不给暗色值的话会一直走浅色 fallback：#0451a5 深蓝配 #1e1e1e 深灰底，对比度只有 2.16:1，
+     而 key 是树视图里最主要的内容，等于暗色模式下看不清。 */
+  --json-key: #9cdcfe;
+  --json-string: #ce9178;
+  --json-number: #b5cea8;
+  --json-boolean: #569cd6;
+  --json-null: #808080;
 }
 
 html, body {
@@ -311,7 +335,11 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   flex: 1;
   overflow: visible;        /* 工具栏 tooltip 需要在容器外显示 */
   display: flex;
-  min-width: 0;
+  /* 必须给编辑区留底线。窗口最小宽度是 600px（main.js 的 minWidth），
+     而两侧固定宽度加起来是 240(大纲) + 420(源码) + 10(两条分隔条) = 670px > 600，
+     原来这里写 min-width:0，结果编辑区被直接压成 0 宽、内容完全消失，
+     而且 html/body 是 overflow:hidden，连横向滚动都救不回来。 */
+  min-width: 240px;
   position: relative;
 }
 
@@ -358,6 +386,29 @@ body[data-theme-mode="system"] #theme-toggle { opacity: 0.55; }
   padding: 20px max(40px, calc((100% - 800px) / 2)) 80px !important;
   font-size: 16px;
   line-height: 1.8;
+}
+
+/* 表格（已固化）：
+   - 与正文同一 800px 阅读栏，禁止撑到窗口全宽
+   - 覆盖 vditor 的 block + nowrap + keep-all，格子内换行，不要整页横拖
+   - auto 按内容分列；width:100% 用满阅读栏 */
+.vditor-reset table {
+  display: table !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: auto !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.vditor-reset table td,
+.vditor-reset table th {
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
 }
 
 /* 代码行号样式 */
@@ -452,7 +503,10 @@ body.dark .vditor-reset mark {
 /* 右侧源码面板 */
 #source-pane {
   width: 420px;
-  flex-shrink: 0;
+  /* 空间不足时让源码面板先让位（编辑区有 min-width 兜底，见 #editor-wrap 的注释）。
+     flex-basis 仍是 420px，正常宽度下的观感和拖拽行为不变。 */
+  flex-shrink: 1;
+  min-width: 0;
   border-left: 1px solid var(--border);
   background: var(--source-bg);
   display: flex;
@@ -587,6 +641,13 @@ body[data-style-theme="github"] {
   --status-bg: #f6f8fa;
   --status-text: #656d76;
   --source-bg: #ffffff;
+  --hover: rgba(0, 0, 0, 0.06);
+  --text-muted: #656d76;
+  --json-key: #0550ae;
+  --json-string: #0a3069;
+  --json-number: #0550ae;
+  --json-boolean: #8250df;
+  --json-null: #6e7781;
 }
 
 body[data-style-theme="night"] {
@@ -598,6 +659,13 @@ body[data-style-theme="night"] {
   --status-bg: #0d1117;
   --status-text: #8b949e;
   --source-bg: #0d1117;
+  --hover: rgba(255, 255, 255, 0.08);
+  --text-muted: #8b949e;
+  --json-key: #79c0ff;
+  --json-string: #a5d6ff;
+  --json-number: #79c0ff;
+  --json-boolean: #d2a8ff;
+  --json-null: #8b949e;
 }
 
 body[data-style-theme="sepia"] {
@@ -609,6 +677,13 @@ body[data-style-theme="sepia"] {
   --status-bg: #f4e8c8;
   --status-text: #8a7560;
   --source-bg: #fbf0d9;
+  --hover: rgba(78, 59, 44, 0.08);
+  --text-muted: #8a7560;
+  --json-key: #7a4b2a;
+  --json-string: #2f6b4f;
+  --json-number: #8b5e3c;
+  --json-boolean: #9b4f96;
+  --json-null: #a0917d;
 }
 
 body[data-style-theme="slate"] {
@@ -620,6 +695,13 @@ body[data-style-theme="slate"] {
   --status-bg: #1e2a3a;
   --status-text: #718096;
   --source-bg: #1e2a3a;
+  --hover: rgba(255, 255, 255, 0.07);
+  --text-muted: #8fa3b8;
+  --json-key: #90cdf4;
+  --json-string: #9ae6b4;
+  --json-number: #90cdf4;
+  --json-boolean: #d6bcfa;
+  --json-null: #718096;
 }
 
 /* ========= 快速打开面板（⌘P） ========= */
@@ -1049,12 +1131,16 @@ mark.mp-find-current {
 /* 顶部"格式化"按钮（文字按钮，常驻显示）
    排列（从右到左）：主题(10) → 搜索(40) → 收藏(70) → 源码对比(100) → 格式化(135)
    md 模式下功能不可用 → 通过 [disabled] 置灰；代码模式下高亮可点。 */
-#format-code-btn {
+/* 选择器必须带 #toolbar 前缀：#format-code-btn 单独写只有 (1,0,0)，
+   而 #toolbar button 是 (1,0,1) 反而更高，会把下面的 width/padding/border 全压掉
+   （历史上就是这样，border 和 padding 一直是失效的，只是 min-width 恰好没被声明才没露馅）。
+   #toolbar #format-code-btn 是 (2,0,0)，稳过。 */
+#toolbar #format-code-btn {
   -webkit-app-region: no-drag;
   position: absolute;
   top: 4px;
   right: 135px;
-  /* 关键：必须显式覆盖 #toolbar button 的 width:22px，否则文字会被挤成竖排 "格/式/化" */
+  /* 必须显式覆盖 #toolbar button 的 width:22px，否则文字会被挤成竖排 "格/式/化" */
   width: auto;
   min-width: 54px;
   height: 22px;

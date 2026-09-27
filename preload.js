@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('markmate', {
   onRequestExportHtml: (cb) => ipcRenderer.on('request-export', (e, kind) => { if (kind === 'html') cb(); }),
   onRevealAssetsDir: (cb) => ipcRenderer.on('reveal-assets-dir', () => cb()),
   onConfirmClose: (cb) => ipcRenderer.on('confirm-close', () => cb()),
+  onCloseActiveTab: (cb) => ipcRenderer.on('close-active-tab', () => cb()),
 
   // 渲染进程 -> 主进程
   saveContent: (content, saveAs) => ipcRenderer.invoke('save-content', { content, saveAs }),

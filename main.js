@@ -31,6 +31,10 @@ function getWin(id) { return BrowserWindow.getAllWindows().find(w => w.id === id
 // 窗口已存在时，待打开路径存在对应 ctx.pendingOpenPath 上，避免多窗口竞态。
 let _pendingOpenPathGlobal = null;
 
+// 用户是否发起过退出（⌘Q / 菜单退出 / Dock 退出）。
+// before-quit 会先 preventDefault 去走保存确认，窗口全关后靠这个标记补发 app.quit()。
+let quitRequested = false;
+
 function createWindow(initialTab) {
   const win = new BrowserWindow({
     width: 1100,
@@ -52,6 +56,29 @@ function createWindow(initialTab) {
     ctx._initialTab = initialTab;
   }
   setContext(win.id, ctx);
+
+  // ============ 外链一律交给系统浏览器，绝不在应用内加载 ============
+  // 不设这两个 handler 的话：vditor 内部对 Markdown 链接会调 window.open(href)，
+  // Electron 默认行为是新建一个 BrowserWindow 加载远程页面 —— 用户会得到一个
+  // 没有地址栏、看不到真实域名、也没有前进后退的窗口（钓鱼面），
+  // 而且这个窗口还会被我们注入的 CSP 打残，显示错乱。
+  const openExternalIfSafe = (url) => {
+    // 只放行正常的网页协议，挡掉 file:/javascript:/data: 等
+    if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+      shell.openExternal(url).catch((err) => console.warn('[MarkMate:openExternal]', err));
+    }
+  };
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalIfSafe(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    // 应用自身页面只会是 file://（loadFile），其余一切导航都是外链
+    if (!/^file:\/\//i.test(url)) {
+      e.preventDefault();
+      openExternalIfSafe(url);
+    }
+  });
 
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
 
@@ -597,6 +624,9 @@ ipcMain.on('confirm-close-reply', (event, payload) => {
     if (win) win.close();
   } else {
     if (ctx) ctx.allowClose = false;
+    // 用户在关闭确认里点了"取消" → 这次退出意图作废，
+    // 否则之后随手关掉最后一个窗口会被误当成 ⌘Q 而把整个 App 退掉。
+    quitRequested = false;
   }
 });
 
@@ -966,13 +996,21 @@ ipcMain.on('open-in-new-window', (event, info) => {
 
 // ============ IPC: 在文件夹中显示文件 ============
 ipcMain.on('reveal-file-in-finder', (event, filePath) => {
-  if (!filePath || !fs.existsSync(filePath)) return;
-  shell.showItemInFolder(filePath);
+  if (typeof filePath !== 'string' || !filePath) return;
+  if (!fs.existsSync(filePath)) return;
+  shell.showItemInFolder(filePath);   // 只是在 Finder 里揭示，不会执行文件
 });
 
 // ============ IPC: 在 Finder 中打开文件夹 ============
 ipcMain.on('open-folder', (event, dirPath) => {
-  if (!dirPath || !fs.existsSync(dirPath)) return;
+  if (typeof dirPath !== 'string' || !dirPath) return;
+  // 必须确认是目录：shell.openPath 是"用系统默认程序打开任意路径"，
+  // 对 .app / .exe / .command / .bat 来说就等于**执行**。
+  // 只校验"存在"的话，渲染层一旦被注入就能借这个通道运行任意本地程序，
+  // 把 contextIsolation + nodeIntegration:false 的沙箱边界绕过去。
+  let st;
+  try { st = fs.statSync(dirPath); } catch (err) { return; }
+  if (!st.isDirectory()) return;
   shell.openPath(dirPath);
 });
 
@@ -1209,17 +1247,27 @@ app.whenReady().then(() => {
 
 app.on('before-quit', (e) => {
   const wins = BrowserWindow.getAllWindows();
+  let anyNeedsConfirm = false;
+  // 不再依赖 ctx.currentDirty（单文件脏标记），让每个窗口的 close 事件走 confirm-close 流程
+  // 由渲染层判定。这里对所有尚未确认关闭的窗口都触发 close（而非只处理第一个），
+  // 否则多窗口退出时只有一个窗口弹确认，其余窗口的未保存内容可能被静默丢弃。
   for (const win of wins) {
     const ctx = getContext(win.id);
-    // 不再依赖 ctx.currentDirty（单文件脏标记），让 close 事件走 confirm-close 流程由渲染层判定
     if (ctx && !ctx.allowClose) {
-      e.preventDefault();
-      win.close();
-      return;
+      anyNeedsConfirm = true;
+      if (!win.isDestroyed()) win.close();
     }
+  }
+  if (anyNeedsConfirm) {
+    // 记住"用户确实想退出"。preventDefault 只是为了先走完各窗口的保存确认流程，
+    // 等窗口全部关掉后必须由 window-all-closed 把 quit 重新发起一次。
+    // 少了这个标记，macOS 上 ⌘Q 的表现是"窗口全关了、App 还在 Dock 里"，得按第二次才真退出。
+    quitRequested = true;
+    e.preventDefault();
   }
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // darwin 下平时关掉所有窗口不退出（macOS 习惯），但如果这次是用户主动 ⌘Q 触发的，就必须退出
+  if (quitRequested || process.platform !== 'darwin') app.quit();
 });
