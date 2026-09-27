@@ -3512,8 +3512,15 @@ window.markmate.onUpdateStatus((info) => {
       dismissBtn.onclick = () => { banner.classList.add('hidden'); updateDismissed = true; };
       break;
     case 'up-to-date':
+      // 静默：启动时的自动检查没必要打扰用户
+      break;
     case 'error':
-      // 不出提示
+      // 此前 error 和 up-to-date 共用一个空分支，于是"更新检查失败"和"已是最新"
+      // 在用户端表现完全一致 —— 自动更新链路断了整整两个大版本都没人发现，
+      // 因为所有人都以为自己已经是最新版。
+      // 现在把失败写进状态栏（不弹横幅，避免每次启动都打扰），至少可被察觉。
+      setAutoSaveStatus('更新检查失败（可稍后在菜单中重试）');
+      console.warn('[MarkMate:update] 检查更新失败：', info && info.error);
       break;
   }
 });
