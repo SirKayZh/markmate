@@ -93,6 +93,16 @@
 
       <h2>3. 第三方服务</h2>
       <p>MarkMate 应用本身<strong>不集成任何第三方分析、广告或追踪 SDK</strong>。MarkMate 网站托管在 GitHub Pages 上，GitHub 可能会按照其<a href="https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement" target="_blank" rel="noopener">隐私声明</a>收集访问日志。</p>
+      <h3>3.1 应用的联网行为：检查更新</h3>
+      <p>这是 MarkMate 应用<strong>唯一</strong>的主动联网行为，我们如实说明：</p>
+      <ul>
+        <li><strong>何时发生</strong>：每次启动应用约 3 秒后，自动向 GitHub Releases 请求一次最新版本信息（一个很小的版本清单文件）；你在菜单中手动「检查更新」时也会请求一次。</li>
+        <li><strong>发送了什么</strong>：请求中<strong>不包含</strong>任何文档内容、文件名、路径或个人信息，仅是一次标准的 HTTPS 下载请求。</li>
+        <li><strong>谁能看到</strong>：该请求由 GitHub 接收。与访问任何网站一样，GitHub 会按其隐私声明记录访问日志，其中包括你的 <strong>IP 地址</strong>、请求时间以及 User-Agent（含应用版本号与操作系统类型）。这些日志由 GitHub 持有，MarkMate 开发者无法访问。</li>
+        <li><strong>下载更新</strong>：发现新版本时只会弹出提示，<strong>不会自动下载</strong>。只有你主动点击后才会从 GitHub 下载安装包（macOS 会跳转到下载页面）。</li>
+        <li><strong>如何避免</strong>：目前应用内暂未提供关闭自动检查的开关。如需完全离线使用，可在防火墙中阻止 MarkMate 访问网络，编辑、保存等所有功能均不受影响。</li>
+      </ul>
+      <p>上文第 2 节所说「我们不会收集 IP 地址」，指的是 MarkMate 开发者不会收集；检查更新时 GitHub 侧产生的访问日志不在此列，特此说明。</p>
       <p>本站使用 <strong>Google Analytics（GA4）</strong> 进行网站访问统计。Google Analytics 是 Google LLC 提供的网络分析服务，通过 Cookie 和 Web 信标收集匿名访问数据。Google 可能会将这些数据用于其自身的服务改进。详情请参阅 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google 隐私政策</a> 和 <a href="https://support.google.com/analytics/answer/6004245" target="_blank" rel="noopener">Google Analytics 数据保护说明</a>。</p>
 
       <h2>4. 数据安全</h2>

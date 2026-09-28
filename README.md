@@ -28,8 +28,8 @@
 ### 🎯 One Editor, Three File Types
 
 <p align="center">
-  <img src="build/screenshots/hero-macos-light.png" width="360" alt="MarkMate editing interface">&nbsp;
-  <img src="build/screenshots/jsonl-conversation.png" width="360" alt="JSONL conversation bubble view">
+  <img src="docs/images/screenshots/hero-macos-light.png" width="360" alt="MarkMate editing interface">&nbsp;
+  <img src="docs/images/screenshots/jsonl-conversation.png" width="360" alt="JSONL conversation bubble view">
 </p>
 
 <p align="center">
@@ -37,8 +37,8 @@
 </p>
 
 <p align="center">
-  <img src="build/screenshots/json-syntax-error.png" width="360" alt="JSON parse error with line/column fix">&nbsp;
-  <img src="build/screenshots/annotation-editing.png" width="360" alt="Batch annotation editing">
+  <img src="docs/images/screenshots/json-syntax-error.png" width="360" alt="JSON parse error with line/column fix">&nbsp;
+  <img src="docs/images/screenshots/annotation-editing.png" width="360" alt="Batch annotation editing">
 </p>
 
 <p align="center">
@@ -91,7 +91,7 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 - **Document search** (⌘F) — real-time highlighting, prev/next navigation, match counter
 
 <p align="center">
-  <img src="build/screenshots/file-manager.png" width="720" alt="File manager sidebar with favorites, recent files, and current folder">
+  <img src="docs/images/screenshots/file-manager.png" width="720" alt="File manager sidebar with favorites, recent files, and current folder">
 </p>
 
 ### 🧠 JSONL Dataset Viewer & Editor
@@ -110,7 +110,7 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 - **Zero overhead** — files stay as plain `.json` / `.xml` / `.yaml` on disk; no extra metadata
 
 <p align="center">
-  <img src="build/screenshots/json-viewer.png" width="720" alt="JSON viewer with Prism syntax highlighting">
+  <img src="docs/images/screenshots/json-viewer.png" width="720" alt="JSON viewer with Prism syntax highlighting">
 </p>
 
 ### 🛡️ Never Lose Your Work
@@ -121,7 +121,7 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 - **Close confirmation** — native dialog when closing with unsaved changes
 
 <p align="center">
-  <img src="build/screenshots/version-history.png" width="720" alt="Version history dialog with timeline and preview">
+  <img src="docs/images/screenshots/version-history.png" width="720" alt="Version history dialog with timeline and preview">
 </p>
 
 ### 📤 Multi-format Export
@@ -132,7 +132,7 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 - **Long image (PNG)** — 2x DPI snapshot for social sharing
 
 <p align="center">
-  <img src="build/screenshots/export-formats.png" width="720" alt="Export to PDF/HTML/Word/PNG">
+  <img src="docs/images/screenshots/export-formats.png" width="720" alt="Export to PDF/HTML/Word/PNG">
 </p>
 
 ### 🍎 macOS Integration (also runs on Windows)

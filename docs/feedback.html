@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MarkMate 用户反馈 — 让我们把编辑器做得更好</title>
-  <meta name="description" content="MarkMate 用户反馈问卷 — 你的意见直接影响产品方向。5 道选择题，2 分钟搞定。">
+  <meta name="description" content="MarkMate 用户反馈问卷 — 你的意见直接影响产品方向。共 8 道题，2 分钟搞定。">
   <link rel="icon" type="image/png" href="images/icon.png">
   <link rel="stylesheet" href="styles.css">
   <!-- Google tag (gtag.js) -->
@@ -144,6 +144,12 @@
 
       <div class="preview-box" id="previewBox"></div>
 
+      <div class="submit-area" id="submitActions" style="display:none;">
+        <button class="btn btn-primary btn-lg" onclick="openGithubIssue()">🚀 在 GitHub 提交</button>
+        <button class="btn btn-secondary btn-lg" onclick="copyFeedback()" id="copyBtn">📋 复制文本</button>
+        <p id="submitHint" style="font-size:13px;color:var(--text-secondary);margin-top:8px;">会打开 GitHub 新建 Issue 页面，内容已自动填好；需要登录 GitHub 账号。</p>
+      </div>
+
     </div>
   </div>
 </section>
@@ -247,11 +253,57 @@
     }
 
     var text = lines.join('\n');
+    lastFeedbackText = text;
     var preview = document.getElementById('previewBox');
     preview.textContent = text;
     preview.style.display = 'block';
     document.getElementById('successMsg').style.display = 'block';
+    document.getElementById('submitActions').style.display = 'block';
     preview.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  var lastFeedbackText = '';
+  var ISSUE_URL = 'https://github.com/SirKayZh/markmate/issues/new';
+
+  // 把生成的反馈预填进 GitHub 新建 Issue 页。
+  // GitHub 对 URL 长度有限制（约 8KB），长文本会被截断甚至直接报错，
+  // 超长时改为：先复制到剪贴板 + 打开空白 Issue 页，提示用户粘贴。
+  function openGithubIssue() {
+    if (!lastFeedbackText) return;
+    var url = ISSUE_URL + '?title=' + encodeURIComponent('[反馈] 用户问卷')
+      + '&labels=' + encodeURIComponent('feedback')
+      + '&body=' + encodeURIComponent(lastFeedbackText);
+    if (url.length > 7000) {
+      copyFeedback(function () {
+        document.getElementById('submitHint').textContent =
+          '内容较长，已复制到剪贴板 —— 在打开的页面里粘贴（⌘V / Ctrl+V）即可提交。';
+        window.open(ISSUE_URL + '?title=' + encodeURIComponent('[反馈] 用户问卷'), '_blank', 'noopener');
+      });
+      return;
+    }
+    window.open(url, '_blank', 'noopener');
+  }
+
+  function copyFeedback(done) {
+    if (!lastFeedbackText) return;
+    var btn = document.getElementById('copyBtn');
+    var ok = function () {
+      btn.textContent = '✅ 已复制';
+      setTimeout(function () { btn.textContent = '📋 复制文本'; }, 2000);
+      if (typeof done === 'function') done();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(lastFeedbackText).then(ok, fallback);
+    } else { fallback(); }
+    // 老浏览器 / 非 https 上下文：退回 execCommand
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = lastFeedbackText; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); ok(); }
+      catch (e) { btn.textContent = '复制失败，请手动框选上方文本'; }
+      document.body.removeChild(ta);
+    }
   }
 </script>
 

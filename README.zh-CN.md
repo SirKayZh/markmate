@@ -28,8 +28,8 @@
 ### 🎯 一个编辑器，三类文件通吃
 
 <p align="center">
-  <img src="build/screenshots/hero-macos-light.png" width="360" alt="MarkMate 编辑界面">&nbsp;
-  <img src="build/screenshots/jsonl-conversation.png" width="360" alt="JSONL 对话气泡视图">
+  <img src="docs/images/screenshots/hero-macos-light.png" width="360" alt="MarkMate 编辑界面">&nbsp;
+  <img src="docs/images/screenshots/jsonl-conversation.png" width="360" alt="JSONL 对话气泡视图">
 </p>
 
 <p align="center">
@@ -37,8 +37,8 @@
 </p>
 
 <p align="center">
-  <img src="build/screenshots/json-syntax-error.png" width="360" alt="JSON 解析错误行号列号定位">&nbsp;
-  <img src="build/screenshots/annotation-editing.png" width="360" alt="批量标注编辑">
+  <img src="docs/images/screenshots/json-syntax-error.png" width="360" alt="JSON 解析错误行号列号定位">&nbsp;
+  <img src="docs/images/screenshots/annotation-editing.png" width="360" alt="批量标注编辑">
 </p>
 
 <p align="center">
@@ -91,7 +91,7 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 - **文档内搜索**（⌘F）：实时高亮所有匹配，上/下一个跳转，显示匹配计数
 
 <p align="center">
-  <img src="build/screenshots/file-manager.png" width="720" alt="文件管理侧栏：收藏夹、最近打开、当前文件夹">
+  <img src="docs/images/screenshots/file-manager.png" width="720" alt="文件管理侧栏：收藏夹、最近打开、当前文件夹">
 </p>
 
 ### 🧠 JSONL 数据集查看与编辑
@@ -110,7 +110,7 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 - **零开销**：磁盘上仍是纯净的 `.json` / `.xml` / `.yaml` 文件，无任何额外标记
 
 <p align="center">
-  <img src="build/screenshots/json-viewer.png" width="720" alt="JSON 查看器 Prism 语法高亮">
+  <img src="docs/images/screenshots/json-viewer.png" width="720" alt="JSON 查看器 Prism 语法高亮">
 </p>
 
 ### 🛡️ 永不丢稿
@@ -121,7 +121,7 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 - **关闭确认**：有未保存改动时弹出原生对话框（保存 / 不保存 / 取消）
 
 <p align="center">
-  <img src="build/screenshots/version-history.png" width="720" alt="历史版本对话框：时间线 + 内容预览">
+  <img src="docs/images/screenshots/version-history.png" width="720" alt="历史版本对话框：时间线 + 内容预览">
 </p>
 
 ### 📤 多格式导出
@@ -132,7 +132,7 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 - **长图（PNG）**：2 倍精度截屏，社群分享神器
 
 <p align="center">
-  <img src="build/screenshots/export-formats.png" width="720" alt="PDF/HTML/Word/PNG 导出">
+  <img src="docs/images/screenshots/export-formats.png" width="720" alt="PDF/HTML/Word/PNG 导出">
 </p>
 
 ### 🍎 macOS 深度集成（Windows 也可用）
