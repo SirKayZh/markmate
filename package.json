@@ -1,6 +1,6 @@
 {
   "name": "markmate",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "A lightweight WYSIWYG Markdown editor for macOS & Windows — instant editing, outline navigation, auto-save, JSON/YAML/XML viewer, and PDF/HTML/Word export.",
   "main": "main.js",
   "author": "MarkMate Contributors",
