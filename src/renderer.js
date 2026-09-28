@@ -7,6 +7,35 @@ document.body.setAttribute('data-platform', window.markmate.platform);
 const modKey = () => isMac ? '⌘' : 'Ctrl';
 const modLabel = (shortcut) => shortcut.replace(/⌘/g, modKey());
 
+// ---- 路径工具（跨平台）----
+// 主进程给的是 Node 原生路径，Windows 下是 C:\Users\x\note.md。
+// 此前全文件 22 处 split('/') / lastIndexOf('/') 在 Windows 上全部失效：
+// tab 标题显示完整绝对路径、「当前文件夹」永久为空（lastIndexOf 返回 -1 → substring(0,-1) = ''）、
+// 目录缓存永不失效。统一走这两个函数，同时认 / 和 \。
+// 用 function 声明而不是 const 箭头函数：保证在文件任何位置（包括更靠前的顶层代码）都可调用。
+function baseName(p) {
+  return String(p == null ? '' : p).split(/[\\/]/).pop();
+}
+function dirName(p) {
+  return String(p == null ? '' : p).replace(/[\\/][^\\/]*$/, '');
+}
+// 本地绝对路径 → file:// URL（浏览器端实现，与主进程 pathToFileURL 行为对齐）
+function localPathToFileUrl(p) {
+  let posix = String(p).replace(/\\/g, '/');
+  if (!posix.startsWith('/')) posix = '/' + posix;
+  return 'file://' + posix.split('/').map((seg) =>
+    // 盘符段的冒号必须保留原样：file:///C%3A/ 不会被识别成 Windows 盘符
+    /^[a-zA-Z]:$/.test(seg) ? seg : encodeURIComponent(seg)
+  ).join('/');
+}
+// mpmedia:// URL → 本地路径（与主进程 urlToLocalPath 对齐）
+function mpmediaUrlToLocalPath(url) {
+  let p = String(url).replace(/^mpmedia:\/\//i, '');
+  try { p = decodeURIComponent(p); } catch { /* 保持原样 */ }
+  if (/^\/[a-zA-Z]:[\/\\]/.test(p)) p = p.slice(1);
+  return p;
+}
+
 // 初始化：改写所有静态 ⌘ tooltip 为平台对应符号
 function rewriteShortcutLabels() {
   document.querySelectorAll('[title]').forEach(el => {
@@ -247,7 +276,7 @@ function makeTab({ filePath = null, content = '', codeMode = null } = {}) {
   return {
     id: generateTabId(),
     filePath: filePath || null,
-    displayName: filePath ? filePath.split('/').pop() : '未命名',
+    displayName: filePath ? baseName(filePath) : '未命名',
     content: content || '',
     codeMode: codeMode || null,
     dirty: false,
@@ -273,6 +302,12 @@ function getActiveTab() {
   return activeTabId ? getTabById(activeTabId) : null;
 }
 
+// 给用户看的 tab 名称（关闭确认等对话框用）
+function tabLabel(tab) {
+  if (!tab) return '未命名';
+  return tab.displayName || (tab.filePath ? baseName(tab.filePath) : '未命名');
+}
+
 // 捕获「活动态全局镜像」→ 写回 tab 对象。切走当前 tab 前调用。
 function captureTabState(tab) {
   if (!tab) return;
@@ -294,7 +329,7 @@ function captureTabState(tab) {
   tab.dirty = isDirty;
   tab.codeMode = currentCodeMode;
   tab.filePath = currentFilePath;
-  tab.displayName = currentFilePath ? currentFilePath.split('/').pop() : '未命名';
+  tab.displayName = currentFilePath ? baseName(currentFilePath) : '未命名';
   tab.jsonView = currentJsonView;
   tab.jsonlPage = jsonlPage;
   if (chatEdits instanceof Map) tab._chatEdits = new Map(chatEdits);
@@ -432,9 +467,9 @@ async function closeTab(tabId) {
   const tab = getTabById(tabId);
   if (!tab) return;
 
-  // 脏文件确认
+  // 脏文件确认（显式告诉主进程是哪个文件——关的可能是后台 tab，不是当前激活的那个）
   if (tab.dirty) {
-    const action = await window.markmate.askCloseConfirm();
+    const action = await window.markmate.askCloseConfirm({ names: [tabLabel(tab)] });
     if (action === 'cancel') return;
     if (action === 'save') {
       // 先切到该 tab 保存（必须 await，否则 getEditorContent 可能读到旧 tab 的内容）
@@ -449,7 +484,7 @@ async function closeTab(tabId) {
       if (res.path) {
         currentFilePath = res.path;
         tab.filePath = res.path;
-        tab.displayName = res.path.split('/').pop();
+        tab.displayName = baseName(res.path);
         tab.content = content;
         tab.dirty = false;
       }
@@ -1255,7 +1290,7 @@ async function refreshFileList() {
     folderEl.innerHTML = '<div class="file-item" style="opacity:0.5;font-size:11px">展开后加载同目录文件…</div>';
     if (folderCountEl) folderCountEl.textContent = '';
   } else {
-    const dir = currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
+    const dir = dirName(currentFilePath);
     try {
       // 优先用缓存，避免每次切 tab 都 IPC 读目录
       let entries = getCachedDirectory(dir);
@@ -1329,7 +1364,7 @@ document.getElementById('files-content').addEventListener('click', (e) => {
     const fileItem = favStar.closest('.file-item');
     if (!fileItem) return;
     const fp = fileItem.dataset.path;
-    const name = fileItem.querySelector('.fi-name')?.textContent || fp.split('/').pop();
+    const name = fileItem.querySelector('.fi-name')?.textContent || baseName(fp);
     if (!fp) return;
     const nowFav = toggleFavorite(fp, name);
     showQuickToast(nowFav ? '★ 已加入收藏' : '已取消收藏');
@@ -1931,8 +1966,8 @@ function nextStyleTheme() { const keys = Object.keys(STYLE_THEMES); const idx = 
 window.markmate.onFileOpened(({ path, content, codeMode }) => {
   // 切换到新目录时需要失效缓存
   if (currentFilePath) {
-    const oldDir = currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
-    const newDir = path.substring(0, path.lastIndexOf('/'));
+    const oldDir = dirName(currentFilePath);
+    const newDir = dirName(path);
     if (oldDir !== newDir) _dirCache = { dir: null, entries: null, time: 0 };
   }
   createTab(path, content, codeMode);
@@ -2718,12 +2753,12 @@ async function exportJsonlResult() {
     return line;
   });
   const content = out.join('\n') + '\n';
-  const base = (currentFilePath ? currentFilePath.split('/').pop().replace(/\.jsonl$/i, '') : 'export');
+  const base = (currentFilePath ? baseName(currentFilePath).replace(/\.jsonl$/i, '') : 'export');
   const suffix = useFilter ? '_filtered' : '_export';
   const res = await window.markmate.saveTextAs(content, base + suffix + '.jsonl', 'jsonl');
   const statusEl = document.getElementById('json-filter-status');
   if (res && res.saved) {
-    showQuickToast(`已导出 ${lines.length} 条到 ${res.path.split('/').pop()}`);
+    showQuickToast(`已导出 ${lines.length} 条到 ${baseName(res.path)}`);
   }
 }
 
@@ -3068,8 +3103,8 @@ window.markmate.onRequestSave(async ({ saveAs }) => {
     if (res.path) {
       currentFilePath = res.path;
       const tab = getActiveTab();
-      if (tab) { tab.filePath = res.path; tab.displayName = res.path.split('/').pop(); renderTabBar(); }
-      statusFile.textContent = res.path.split('/').pop();
+      if (tab) { tab.filePath = res.path; tab.displayName = baseName(res.path); renderTabBar(); }
+      statusFile.textContent = baseName(res.path);
       addRecentFile(res.path);
       if (sidebarTab === 'files') refreshFileList();
     }
@@ -3085,10 +3120,19 @@ window.markmate.onRequestPngHtml(() => { const html = vditor ? vditor.getHTML() 
 function getRenderedHtml() { if (!vditor) return ''; return vditor.getHTML(); }
 function absolutizeImgsInHtml(html, baseDir) {
   return html.replace(/<img\b([^>]*?)\ssrc=(["'])([^"']+)\2/gi, (m, pre, q, src) => {
-    if (/^mpmedia:\/\//i.test(src)) { const abs = decodeURIComponent(src.replace(/^mpmedia:\/\//i, '')); return `<img${pre} src=${q}file://${abs}${q}`; }
+    if (/^mpmedia:\/\//i.test(src)) {
+      return `<img${pre} src=${q}${localPathToFileUrl(mpmediaUrlToLocalPath(src))}${q}`;
+    }
     if (/^(https?:|file:|data:)/i.test(src)) return m;
     if (!baseDir) return m;
-    try { let abs = src; if (abs.startsWith('./')) abs = abs.slice(2); const sep = baseDir.endsWith('/') ? '' : '/'; const url = 'file://' + baseDir + sep + abs; return `<img${pre} src=${q}${url}${q}`; }
+    try {
+      let rel = src;
+      try { rel = decodeURIComponent(src); } catch { /* 保持原样 */ }
+      if (rel.startsWith('./')) rel = rel.slice(2);
+      // baseDir 在 Windows 上是反斜杠路径，统一用 / 拼接后交给 localPathToFileUrl 处理
+      const base = String(baseDir).replace(/[\\/]+$/, '');
+      return `<img${pre} src=${q}${localPathToFileUrl(base + '/' + rel)}${q}`;
+    }
     catch (err) { console.warn('[MarkMate:export-img-rewrite]', err); return m; }
   });
 }
@@ -3102,8 +3146,8 @@ async function runExport(kind) {
   showQuickToast(`正在导出 ${kind.toUpperCase()}…`);
   try {
     const html = getRenderedHtml();
-    if (kind === 'pdf') { const r = await window.markmate.exportPdf(html); showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : ''); return; }
-    if (kind === 'html') { const r = await window.markmate.exportHtml(html); showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : ''); return; }
+    if (kind === 'pdf') { const r = await window.markmate.exportPdf(html); showQuickToast(r.saved ? `✅ 已导出 ${baseName(r.path)}` : ''); return; }
+    if (kind === 'html') { const r = await window.markmate.exportHtml(html); showQuickToast(r.saved ? `✅ 已导出 ${baseName(r.path)}` : ''); return; }
     const res = await window.markmate.getExportResources();
     const baseDir = res.baseDir || '';
     const absoluteHtml = absolutizeImgsInHtml(html, baseDir);
@@ -3112,10 +3156,10 @@ async function runExport(kind) {
       const full = buildFullHtml(absoluteHtml, res.vditorCss || '');
       const blob = htmlDocx.asBlob(full);
       const r = await window.markmate.exportDocx(blob);
-      showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : '');
+      showQuickToast(r.saved ? `✅ 已导出 ${baseName(r.path)}` : '');
       return;
     }
-    if (kind === 'png') { const r = await window.markmate.exportPng(2); showQuickToast(r.saved ? `✅ 已导出 ${r.path.split('/').pop()}` : ''); return; }
+    if (kind === 'png') { const r = await window.markmate.exportPng(2); showQuickToast(r.saved ? `✅ 已导出 ${baseName(r.path)}` : ''); return; }
   } catch (err) { console.error('[export]', err); showQuickToast(`❌ 导出失败：${err.message || err}`); }
 }
 
@@ -3130,7 +3174,7 @@ window.markmate.onSetStyleTheme((name) => setStyleTheme(name));
 window.markmate.onQuickOpen(() => showQuickOpen());
 window.markmate.onToggleFavorite(() => {
   if (!currentFilePath) return;
-  const nowFav = toggleFavorite(currentFilePath, currentFilePath.split('/').pop());
+  const nowFav = toggleFavorite(currentFilePath, baseName(currentFilePath));
   showQuickToast(nowFav ? '★ 已加入收藏' : '已取消收藏');
 });
 
@@ -3142,7 +3186,14 @@ window.markmate.onConfirmClose(async () => {
     window.markmate.confirmCloseReply({ action: 'discard' });
     return;
   }
-  const action = await window.markmate.askCloseConfirm();
+  // 把所有未保存的 tab 都列给用户看，而不是只显示当前激活的那一个
+  const dirtyNames = dirtyTabs.map(tabLabel);
+  if (hasChatEdits) {
+    const act = getActiveTab();
+    const label = act ? tabLabel(act) : '当前文件';
+    if (!dirtyNames.includes(label)) dirtyNames.push(label + '（对话标注）');
+  }
+  const action = await window.markmate.askCloseConfirm({ names: dirtyNames });
   if (action === 'cancel') { window.markmate.confirmCloseReply({ action: 'cancel' }); return; }
   if (action === 'discard') { window.markmate.confirmCloseReply({ action: 'discard' }); return; }
 
@@ -3181,9 +3232,9 @@ window.markmate.onConfirmClose(async () => {
         dt.filePath = res.path;
         if (dt.id === activeTabId) {
           currentFilePath = res.path;
-          statusFile.textContent = res.path.split('/').pop();
+          statusFile.textContent = baseName(res.path);
         }
-        dt.displayName = res.path.split('/').pop();
+        dt.displayName = baseName(res.path);
       }
     } else {
       allSaved = false;
@@ -3250,7 +3301,7 @@ function saveRecentFiles(list) {
 function addRecentFile(fp) {
   if (!fp) return;
   const list = getRecentFiles().filter(f => f.path !== fp);
-  list.unshift({ path: fp, name: fp.split('/').pop(), time: Date.now() });
+  list.unshift({ path: fp, name: baseName(fp), time: Date.now() });
   if (list.length > MAX_RECENT) list.length = MAX_RECENT;
   saveRecentFiles(list);
 }
@@ -3265,7 +3316,7 @@ function toggleFavorite(fp, name) {
   const list = getFavorites();
   const idx = list.findIndex(f => f.path === fp);
   if (idx >= 0) { list.splice(idx, 1); saveFavorites(list); return false; }
-  else { list.push({ path: fp, name: name || fp.split('/').pop() }); saveFavorites(list); return true; }
+  else { list.push({ path: fp, name: name || baseName(fp) }); saveFavorites(list); return true; }
 }
 
 // ========= 快速打开 =========
@@ -3302,8 +3353,11 @@ function renderQuickResults(query) {
     else {
       const div = document.createElement('div');
       div.className = 'quick-open-item'; div.dataset.idx = i;
-      const shortPath = item.path.replace(/^\/Users\/[^/]+/, '~');
-      div.innerHTML = `<span class="qoi-name">${escapeHtml(item.name)}</span><span class="qoi-tag">${item.type === 'fav' ? '★' : ''}</span><span class="qoi-path">${escapeHtml(shortPath.replace(item.name, ''))}</span>`;
+      // 只显示所在目录。原先用 shortPath.replace(item.name, '') 去掉文件名，
+      // 但 replace 替换的是「第一处」出现：文件名恰好也是上级目录名的一部分时会截错位置。
+      // home 缩写同时兼容 macOS（/Users/x）与 Windows（C:\Users\x）。
+      const shortDir = dirName(item.path).replace(/^(\/Users\/[^/]+|[a-zA-Z]:[\\/]Users[\\/][^\\/]+)/i, '~');
+      div.innerHTML = `<span class="qoi-name">${escapeHtml(item.name)}</span><span class="qoi-tag">${item.type === 'fav' ? '★' : ''}</span><span class="qoi-path">${escapeHtml(shortDir + (shortDir ? '/' : ''))}</span>`;
       div.addEventListener('click', () => openQuickItem(item));
       qoResults.appendChild(div);
     }
@@ -3367,7 +3421,7 @@ if (favBtn) {
   favBtn.addEventListener('click', (e) => {
     e.preventDefault();
     if (!currentFilePath) { showQuickToast('请先打开一个文件'); return; }
-    const name = currentFilePath.split('/').pop();
+    const name = baseName(currentFilePath);
     const nowFav = toggleFavorite(currentFilePath, name);
     showQuickToast(nowFav ? '★ 已加入收藏' : '已取消收藏');
     updateFavoriteBtn();
@@ -3674,10 +3728,18 @@ function performFind() {
 function performFindAll(q) {
   const lower = q.toLowerCase();
   findGlobalMatches = [];
-  for (let i = 0; i < jsonlCachedLines.length; i++) {
-    if (jsonlCachedLines[i].toLowerCase().includes(lower)) {
-      findGlobalMatches.push({ lineIdx: i });
-    }
+  // 筛选生效时只在「筛选结果」里找：筛选之外的行根本不在分页里，跳过去也显示不出来。
+  // 行号统一记 jsonlCachedLines 的全局下标，翻页时再映射回分页位置（见 jumpToGlobalMatch）。
+  const candidates = jsonlFilterIdx || null;
+  const total = candidates ? candidates.length : jsonlCachedLines.length;
+  for (let k = 0; k < total; k++) {
+    const i = candidates ? candidates[k] : k;
+    const line = jsonlCachedLines[i];
+    if (!line || !line.toLowerCase().includes(lower)) continue;
+    // 解析失败的坏行在分页时会被跳过、不进任何视图，命中了也定位不到 → 不计入。
+    // 只对命中行做 parse，代价与命中数成正比。
+    try { JSON.parse(line); } catch { continue; }
+    findGlobalMatches.push({ lineIdx: i });
   }
   if (!findGlobalMatches.length) {
     clearFindHighlights();
@@ -3691,7 +3753,10 @@ function jumpToGlobalMatch(i) {
   if (!findGlobalMatches.length) return;
   findGlobalIdx = ((i % findGlobalMatches.length) + findGlobalMatches.length) % findGlobalMatches.length;
   const lineIdx = findGlobalMatches[findGlobalIdx].lineIdx;
-  const targetPage = Math.floor(lineIdx / JSONL_PAGE_SIZE);
+  // 分页是按 jsonlActiveLines()（筛选时是过滤后的集合）切的，不是按全局行号。
+  // 原先直接用 lineIdx / PAGE_SIZE，筛选生效时会翻到错误的页。
+  const posInActive = jsonlFilterIdx ? jsonlFilterIdx.indexOf(lineIdx) : lineIdx;
+  const targetPage = Math.floor(Math.max(0, posInActive) / JSONL_PAGE_SIZE);
   const q = (findInput.value || '').trim();
 
   // 需要翻页则切到对应页并重渲染当前视图
@@ -3710,8 +3775,10 @@ function jumpToGlobalMatch(i) {
   findMatches = marks;
   marks.forEach(m => m.classList.remove('mp-find-current'));
 
-  // 该行在本页内的序号
-  const idxInPage = lineIdx - targetPage * JSONL_PAGE_SIZE;
+  // 该行在本页渲染出的条目里是第几个。
+  // 不能用 lineIdx - 页起点：loadJsonlPage 会跳过 JSON.parse 失败的行，
+  // 一旦页内有坏行，后面所有条目都会错位。jsonlEntryCacheIdx 记录了每个条目的全局下标，直接反查。
+  const idxInPage = jsonlEntryCacheIdx.indexOf(lineIdx);
   let target = marks[0] || null;
   // tree/chat 视图：第 idxInPage 个条目里的第一个 mark
   const entries = currentJsonView === 'chat'
@@ -3803,7 +3870,7 @@ async function showVersions() {
       el.classList.add('active');
       const p = el.dataset.path;
       const res = await window.markmate.readVersion(p);
-      if (res && res.ok) { currentVersionContent = res.content; versionsPreviewMeta.textContent = p.split('/').pop(); versionsPreviewContent.textContent = res.content; versionsRestoreBtn.disabled = false; versionsCopyBtn.disabled = false; }
+      if (res && res.ok) { currentVersionContent = res.content; versionsPreviewMeta.textContent = baseName(p); versionsPreviewContent.textContent = res.content; versionsRestoreBtn.disabled = false; versionsCopyBtn.disabled = false; }
     });
   });
   const first = versionsList.querySelector('.ver-item');

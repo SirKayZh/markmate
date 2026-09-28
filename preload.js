@@ -65,7 +65,7 @@ contextBridge.exposeInMainWorld('markmate', {
   },
   rendererReady: () => ipcRenderer.send('renderer-ready'),
   setNativeTheme: (mode) => ipcRenderer.send('set-native-theme', mode),
-  askCloseConfirm: () => ipcRenderer.invoke('ask-close-confirm'),
+  askCloseConfirm: (opts) => ipcRenderer.invoke('ask-close-confirm', opts || {}),
   askChatEditsConfirm: (count) => ipcRenderer.invoke('ask-chat-edits-confirm', { count }),
   confirmCloseReply: (payload) => ipcRenderer.send('confirm-close-reply', payload),
   confirmOverwrite: (message) => ipcRenderer.invoke('confirm-overwrite', { message }),

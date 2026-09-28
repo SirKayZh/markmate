@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme, protocol, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 
 // ============ 平台检测 ============
 const isMac = process.platform === 'darwin';
@@ -94,7 +95,24 @@ function createWindow(initialTab) {
   }
 
   win.on('closed', () => {
+    // 必须先摘定时器：走 allowClose 路径关窗时，那个 30 秒的兜底定时器仍持有
+    // ctx 与 win 的引用，要等到超时才释放（有 isDestroyed 兜底所以不崩，但是确定性的滞留）。
+    const c = getContext(win.id);
+    if (c && c._closeTimer) { clearTimeout(c._closeTimer); c._closeTimer = null; }
     deleteContext(win.id);
+  });
+
+  // 渲染进程崩溃兜底。close 流程依赖渲染层回 confirm-close-reply，渲染进程一崩就没人回，
+  // 窗口会硬挂到 30 秒定时器超时才关。代码注释里一直声称"由 crashed 事件额外兜底"，
+  // 但全文并不存在这个监听器 —— 这里把它补上。
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[MarkMate] 渲染进程异常退出:', details && details.reason);
+    const c = getContext(win.id);
+    if (c) {
+      c.allowClose = true;
+      if (c._closeTimer) { clearTimeout(c._closeTimer); c._closeTimer = null; }
+    }
+    if (!win.isDestroyed()) win.destroy();
   });
 
   win.on('close', (e) => {
@@ -185,6 +203,10 @@ function formatCodeText(raw, codeLang) {
 // ============ 文件操作 ============
 function setTitle(win, filePath, dirty) {
   if (!win || win.isDestroyed()) return;
+  // filePath 可能来自渲染层传上来的任意对象（open-in-new-window 的 tab.filePath），
+  // 非字符串会让 path.basename 抛 "Path must be a string"，在同步 IPC 监听器里
+  // 抛出就是主进程未捕获异常。这里统一降级成"未命名"。
+  if (filePath != null && typeof filePath !== 'string') filePath = null;
   const name = filePath ? path.basename(filePath) : '未命名';
   win.setTitle(`${dirty ? '• ' : ''}${name} — MarkMate`);
   const absPath = filePath && path.isAbsolute(filePath) ? filePath : (filePath ? path.resolve(filePath) : '');
@@ -259,9 +281,35 @@ function openFile(fp) {
   }
 }
 
+// 原子写：先写临时文件 + fsync，再 rename 覆盖目标。
+// 直接 writeFileSync 是 O_TRUNC 语义（先清空再写），自动保存期间进程被杀 / 断电 / 磁盘满
+// 都会留下 0 字节或半截文件，且原内容不可恢复。文件越大窗口期越长。
+// 同分区 rename 是原子操作，所以目标文件要么是旧内容、要么是完整新内容，不存在中间态。
+function atomicWrite(fp, data, enc) {
+  const tmp = fp + '.markmate.tmp';
+  // 记下原文件权限，rename 后补回（rename 会带走临时文件的默认权限）
+  let mode = null;
+  try { mode = fs.statSync(fp).mode; } catch { /* 新文件，无原权限 */ }
+  let fd;
+  try {
+    fd = fs.openSync(tmp, 'w');
+    fs.writeFileSync(fd, data, enc ? { encoding: enc } : undefined);
+    fs.fsyncSync(fd);          // 确保真正落盘，不只是进 page cache
+  } finally {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch (err) { console.warn('[MarkMate]', err); } }
+  }
+  try {
+    fs.renameSync(tmp, fp);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* 清理失败不影响主流程 */ }
+    throw err;
+  }
+  if (mode != null) { try { fs.chmodSync(fp, mode); } catch (err) { console.warn('[MarkMate]', err); } }
+}
+
 function writeFile(fp, content, ctx) {
   if (currentCodeModeFromCtx(ctx)) {
-    fs.writeFileSync(fp, content == null ? '' : String(content), 'utf-8');
+    atomicWrite(fp, content == null ? '' : String(content), 'utf-8');
     ctx.currentFilePath = fp;
     setTitle(getWinByCtx(ctx), fp, false);
     app.addRecentDocument(fp);
@@ -269,7 +317,7 @@ function writeFile(fp, content, ctx) {
     return;
   }
   const normalized = normalizeImagePaths(content, fp);
-  fs.writeFileSync(fp, normalized, 'utf-8');
+  atomicWrite(fp, normalized, 'utf-8');
   ctx.currentFilePath = fp;
   setTitle(getWinByCtx(ctx), fp, false);
   app.addRecentDocument(fp);
@@ -286,13 +334,44 @@ function getWinByCtx(ctx) {
 }
 
 // ============ 图片路径处理 ============
+// 本地路径 ↔ mpmedia:// / file:// URL 的唯一转换入口。
+// 此前生成端和 4 个解析端各写各的，在 macOS 上侥幸自洽（绝对路径天然以 / 开头），
+// 到 Windows 上彻底错位：C:\Users\x\a.png → mpmedia://C:/Users/x/a.png → 解析端强补 /
+// → /C:/Users/x/a.png → path.win32.resolve 得到 \C:\Users\x\a.png → 过不了 home 校验，
+// 所有本地图片 403。统一约定：URL 路径部分永远以 / 开头，Windows 盘符前多一个 /。
+function pathToMpmediaUrl(absPath) {
+  let posix = String(absPath).split(path.sep).join('/');
+  if (!posix.startsWith('/')) posix = '/' + posix;   // C:/x → /C:/x
+  // 逐段 encodeURIComponent（而非整体 encodeURI），让 # ? : 等保留字符也被编码，URL 本身合法。
+  // 注：实测旧写法（encodeURI 不编码 #）在 Electron 的 protocol.handle 下对「notes #1/pic.png」
+  // 这类路径也能正常加载 —— 之前在 Node 里用 new URL() 模拟得出的「# 会被当锚点剥掉」不成立，
+  // 这里不是在修 bug，只是不去依赖这个行为。盘符段 C: 会被编码成 C%3A，由 urlToLocalPath 还原。
+  return 'mpmedia://' + posix.split('/').map(encodeURIComponent).join('/');
+}
+function urlToLocalPath(url) {
+  let p = String(url).replace(/^(file|mpmedia):\/\//i, '');
+  // decodeURIComponent 才能还原 %23 / %3F / %3A（decodeURI 会保留它们不解码）；
+  // 对旧版 encodeURI 生成的 URL 同样兼容（未编码的保留字符原样通过）
+  try { p = decodeURIComponent(p); } catch { /* 含非法 % 序列时按原样处理 */ }
+  // /C:/x 或 /C:\x → C:/x（兼容新格式 mpmedia:///C:/ 与 file:///C:/）
+  if (/^\/[a-zA-Z]:[\/\\]/.test(p)) p = p.slice(1);
+  // 兼容 v2.1.1 及之前在 macOS 上生成的 URL；posix 下绝对路径必须以 / 开头
+  if (process.platform !== 'win32' && !p.startsWith('/')) p = '/' + p;
+  return path.resolve(p);
+}
+// 导出 HTML/PDF/PNG 时用的 file:// URL。pathToFileURL 会正确处理 Windows 盘符
+// 以及路径中的空格 / # / ? 等字符（手工拼接遇到 # 会被当成锚点截断）。
+function localPathToFileUrl(absPath) {
+  return pathToFileURL(absPath).href;
+}
+
 function normalizeImagePaths(content, mdPath) {
   if (!content || !mdPath) return content;
   const mdDir = path.dirname(mdPath);
   const convert = (url) => {
     if (!/^(file|mpmedia):\/\//i.test(url)) return null;
     try {
-      const abs = decodeURI(url.replace(/^(file|mpmedia):\/\//i, ''));
+      const abs = urlToLocalPath(url);
       if (!path.isAbsolute(abs)) return null;
       const rel = path.relative(mdDir, abs);
       if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
@@ -315,7 +394,7 @@ function expandImagePaths(content, mdPath) {
     try {
       const abs = path.resolve(mdDir, url);
       if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i.test(abs)) return null;
-      return 'mpmedia://' + encodeURI(abs.split(path.sep).join('/'));
+      return pathToMpmediaUrl(abs);
     } catch (err) { console.error('[MarkMate:io]', err); return null; }
   };
   content = content.replace(/(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g,
@@ -335,7 +414,7 @@ async function doSaveAs() {
   if (win) win.webContents.send('request-save', { saveAs: true });
 }
 
-ipcMain.handle('save-content', async (event, { content, saveAs }) => {
+ipcMain.handle('save-content', async (event, { content, saveAs } = {}) => {
   const { ctx, win } = ctxFromEvent(event);
   if (!ctx || !win) return { saved: false };
   let fp = ctx.currentFilePath;
@@ -362,7 +441,7 @@ ipcMain.handle('save-content', async (event, { content, saveAs }) => {
 });
 
 // ============ 导出任意文本到指定路径（如筛选后的 JSONL 子集） ============
-ipcMain.handle('save-text-as', async (event, { content, defaultName, ext }) => {
+ipcMain.handle('save-text-as', async (event, { content, defaultName, ext } = {}) => {
   const { win } = ctxFromEvent(event);
   if (!win) return { saved: false };
   const e = (ext || 'jsonl').replace(/^\./, '');
@@ -372,7 +451,7 @@ ipcMain.handle('save-text-as', async (event, { content, defaultName, ext }) => {
   });
   if (canceled || !filePath) return { saved: false };
   try {
-    fs.writeFileSync(filePath, content, 'utf-8');
+    atomicWrite(filePath, content, 'utf-8');
     return { saved: true, path: filePath };
   } catch (err) {
     dialog.showErrorBox('导出失败', String(err));
@@ -381,7 +460,7 @@ ipcMain.handle('save-text-as', async (event, { content, defaultName, ext }) => {
 });
 
 // ============ 自动保存 ============
-ipcMain.handle('auto-save', async (event, { content }) => {
+ipcMain.handle('auto-save', async (event, { content } = {}) => {
   const { ctx } = ctxFromEvent(event);
   if (!ctx) return { saved: false };
   try {
@@ -401,7 +480,7 @@ ipcMain.handle('auto-save', async (event, { content }) => {
 });
 
 // ============ 大文件覆盖确认 ============
-ipcMain.handle('confirm-overwrite', async (event, { message }) => {
+ipcMain.handle('confirm-overwrite', async (event, { message } = {}) => {
   const { win } = ctxFromEvent(event);
   const { response } = await dialog.showMessageBox(win, {
     type: 'warning',
@@ -415,7 +494,7 @@ ipcMain.handle('confirm-overwrite', async (event, { message }) => {
 });
 
 // ============ 格式化 ============
-ipcMain.handle('format-code', async (event, { content }) => {
+ipcMain.handle('format-code', async (event, { content } = {}) => {
   const { ctx } = ctxFromEvent(event);
   if (!ctx || !ctx.currentCodeMode) return { ok: false, error: '当前不是代码文件' };
   const r = formatCodeText(content, ctx.currentCodeMode.lang);
@@ -450,7 +529,7 @@ function isPathInsideUserData(p) {
   return resolved.startsWith(userDataPath + path.sep);
 }
 
-ipcMain.handle('read-version', async (event, { versionPath }) => {
+ipcMain.handle('read-version', async (event, { versionPath } = {}) => {
   const { ctx } = ctxFromEvent(event);
   if (!isPathInsideUserData(versionPath)) return { ok: false, error: 'Invalid version path' };
   try {
@@ -469,11 +548,23 @@ ipcMain.handle('read-version', async (event, { versionPath }) => {
   }
 });
 
-ipcMain.handle('check-draft', async () => {
+ipcMain.handle('check-draft', async (event) => {
   try {
     const draftDir = getDraftDir();
     if (!fs.existsSync(draftDir)) return { has: false };
-    const files = fs.readdirSync(draftDir).filter(n => n.startsWith('unsaved-draft') && n.endsWith('.md'));
+    // 排除「其他仍然打开着的窗口」正在写的草稿。
+    // 原先是全局取 mtime 最新的一份，不管请求者是谁：窗口 1 正在编辑未命名文档时开窗口 2，
+    // 窗口 2 会被提示"恢复"窗口 1 的实时草稿 —— 内容串台，恢复后两个窗口还会互相覆盖。
+    // 真正需要恢复的只有"没有任何活窗口认领"的草稿（上次崩溃遗留的）。
+    const self = BrowserWindow.fromWebContents(event.sender);
+    const liveOthers = new Set(
+      BrowserWindow.getAllWindows()
+        .filter(w => !w.isDestroyed() && (!self || w.id !== self.id))
+        .map(w => draftFilename(w.id))
+    );
+    const files = fs.readdirSync(draftDir)
+      .filter(n => n.startsWith('unsaved-draft') && n.endsWith('.md'))
+      .filter(n => !liveOthers.has(n));
     if (!files.length) return { has: false };
     const items = files.map(n => {
       const full = path.join(draftDir, n);
@@ -488,7 +579,7 @@ ipcMain.handle('check-draft', async () => {
   }
 });
 
-ipcMain.handle('discard-draft', async (event, { draftPath }) => {
+ipcMain.handle('discard-draft', async (event, { draftPath } = {}) => {
   if (!isPathInsideUserData(draftPath)) return { ok: false, error: 'Invalid draft path' };
   try { if (draftPath && fs.existsSync(draftPath)) fs.unlinkSync(draftPath); return { ok: true }; }
   catch (err) { console.error('[MarkMate:autoSave]', err); return { ok: false }; }
@@ -496,15 +587,79 @@ ipcMain.handle('discard-draft', async (event, { draftPath }) => {
 
 // ============ 历史/草稿存储 ============
 const MAX_VERSIONS_PER_FILE = 10;
+// 超过这个体积就不做版本快照（见 snapshotVersion 注释）
+const MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024;
+// 每个快照目录里记一份源文件绝对路径，用来判断「源文件还在不在」
+const HISTORY_SOURCE_MARKER = '.source';
+// 没有 .source 标记的旧目录（本版本之前创建的）无法反查源路径，只能按时间兜底；
+// 阈值刻意取得很长 —— 源文件仍在编辑的目录，下一次快照就会补上标记，不会走到这里。
+const LEGACY_HISTORY_MAX_DAYS = 180;
+// 草稿是「从未保存过的内容」，宁可多留：超过这个天数才清
+const DRAFT_RETENTION_DAYS = 90;
 function appDataDir() { return path.join(app.getPath('userData'), 'history'); }
 function getDraftDir() { return path.join(app.getPath('userData'), 'drafts'); }
+
+// 启动时回收 userData。此前 versionDirFor 生成的目录永不回收：
+// 用户删除 / 改名源文件后快照仍留在磁盘上，userData 只增不减。
+//
+// 刻意【不】按「多久没动过」删历史：两个月后重新打开一篇老文档，版本历史应该还在。
+// 只清两类确定无用的东西：源文件已不存在的孤儿目录、空目录。
+function pruneUserData() {
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  // 1) 快照目录
+  try {
+    const root = appDataDir();
+    if (fs.existsSync(root)) {
+      for (const name of fs.readdirSync(root)) {
+        const dir = path.join(root, name);
+        try {
+          const st = fs.statSync(dir);
+          if (!st.isDirectory()) continue;
+          const snaps = fs.readdirSync(dir).filter(n => n.endsWith('.md'));
+          if (snaps.length === 0) { fs.rmSync(dir, { recursive: true, force: true }); continue; }
+
+          const marker = path.join(dir, HISTORY_SOURCE_MARKER);
+          if (fs.existsSync(marker)) {
+            const src = fs.readFileSync(marker, 'utf-8').trim();
+            // 源文件已被删除 / 改名 → 孤儿，清掉
+            if (src && !fs.existsSync(src)) fs.rmSync(dir, { recursive: true, force: true });
+          } else if (now - st.mtimeMs > LEGACY_HISTORY_MAX_DAYS * DAY) {
+            fs.rmSync(dir, { recursive: true, force: true });
+          }
+        } catch (err) { console.warn('[MarkMate] prune history', err); }
+      }
+    }
+  } catch (err) { console.warn('[MarkMate] prune history', err); }
+
+  // 2) 草稿：窗口 id 每次冷启动重新分配，历史会话的草稿不会再被任何窗口「认领」，
+  //    不清的话 drafts 只增不减，还可能在启动时弹出几个月前的陈旧草稿。
+  try {
+    const dir = getDraftDir();
+    if (fs.existsSync(dir)) {
+      for (const name of fs.readdirSync(dir)) {
+        if (!name.startsWith('unsaved-draft')) continue;
+        const f = path.join(dir, name);
+        try {
+          if (now - fs.statSync(f).mtimeMs > DRAFT_RETENTION_DAYS * DAY) fs.unlinkSync(f);
+        } catch (err) { console.warn('[MarkMate] prune drafts', err); }
+      }
+    }
+  } catch (err) { console.warn('[MarkMate] prune drafts', err); }
+}
 
 // ============ 持久化数据（不依赖 localStorage origin） ============
 const APP_DATA_FILE = path.join(app.getPath('userData'), 'markmate-data.json');
 function readAppData() {
   try {
     if (fs.existsSync(APP_DATA_FILE)) {
-      return JSON.parse(fs.readFileSync(APP_DATA_FILE, 'utf-8'));
+      const d = JSON.parse(fs.readFileSync(APP_DATA_FILE, 'utf-8'));
+      // 文件内容可能是合法 JSON 但不是对象（null / 数组 / 字符串）——JSON.parse 不抛，
+      // 原样返回后 replaceAppData 里 data[key] = items 会对 null 抛 TypeError，
+      // 而 sync-app-data 是同步 ipcMain.on，没 try/catch → 主进程未捕获异常。
+      if (d && typeof d === 'object' && !Array.isArray(d)) return d;
+      console.warn('[MarkMate] markmate-data.json 结构异常，已忽略');
     }
   } catch (err) { console.warn('[MarkMate]', err); }
   return { recentFiles: [], favorites: [] };
@@ -550,12 +705,23 @@ function versionDirFor(fp) {
 function pad(n) { return String(n).padStart(2, '0'); }
 function timestamp() {
   const d = new Date();
-  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  // 毫秒直接拼在秒后面、不加分隔符：这样旧的无毫秒文件名（…115505）恰好是新文件名
+  // （…115505123）的前缀，字典序仍然等于时间序，snapshotVersion 的淘汰逻辑不受影响。
+  // 只到秒的话，同一秒内手动保存 + 自动保存会生成同名文件而互相覆盖，用户丢一个中间版本。
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${String(d.getMilliseconds()).padStart(3, '0')}`;
 }
 function snapshotVersion(fp, content) {
+  // 只限份数不限体积的话，一个 100MB 的 JSONL 数据集自动保存几轮就会在 userData 里
+  // 堆 10 份副本 = 1GB。大文件的版本历史价值低、代价高，直接跳过。
+  if (content != null && Buffer.byteLength(String(content), 'utf-8') > MAX_SNAPSHOT_BYTES) return;
   try {
     const dir = versionDirFor(fp);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    // 记录源文件路径，供 pruneUserData 判断是否成了孤儿（旧目录会在这里被自动补上标记）
+    const marker = path.join(dir, HISTORY_SOURCE_MARKER);
+    if (!fs.existsSync(marker)) {
+      try { fs.writeFileSync(marker, path.resolve(fp), 'utf-8'); } catch (err) { console.warn('[MarkMate]', err); }
+    }
     const existing = fs.readdirSync(dir).filter(n => n.endsWith('.md')).sort();
     if (existing.length) {
       const last = path.join(dir, existing[existing.length - 1]);
@@ -595,17 +761,30 @@ ipcMain.on('set-dirty', (event, dirty) => {
   setTitle(win, ctx.currentFilePath, ctx.currentDirty);
 });
 
-ipcMain.handle('ask-close-confirm', async (event) => {
+ipcMain.handle('ask-close-confirm', async (event, { names } = {}) => {
   const { ctx, win } = ctxFromEvent(event);
   if (!win) return 'cancel';
-  const name = (ctx && ctx.currentFilePath) ? path.basename(ctx.currentFilePath) : '未命名';
+  // 由渲染层告知「到底哪些文件有未保存改动」。原先一律取 ctx.currentFilePath（当前激活 tab）：
+  //   - 关闭后台的脏 tab 时，对话框显示的是另一个文件的名字；
+  //   - 关窗时多个 tab 都脏，只显示激活那一个，用户以为只有一个文件有改动就点了「不保存」。
+  let list = Array.isArray(names) ? names.filter(n => typeof n === 'string' && n).map(n => n.slice(0, 120)) : [];
+  if (!list.length) list = [(ctx && ctx.currentFilePath) ? path.basename(ctx.currentFilePath) : '未命名'];
+  const MAX_SHOW = 8;
+  const message = list.length === 1
+    ? `"${list[0]}" 有尚未保存的更改`
+    : `${list.length} 个文件有尚未保存的更改`;
+  const detail = list.length === 1
+    ? '关闭前是否要保存？'
+    : list.slice(0, MAX_SHOW).map(n => '• ' + n).join('\n')
+      + (list.length > MAX_SHOW ? `\n…等共 ${list.length} 个` : '')
+      + '\n\n选择「不保存」将丢弃以上全部改动。';
   const { response } = await dialog.showMessageBox(win, {
     type: 'warning',
-    buttons: ['保存', '不保存', '取消'],
+    buttons: [list.length === 1 ? '保存' : '全部保存', list.length === 1 ? '不保存' : '全部不保存', '取消'],
     defaultId: 0, cancelId: 2,
     title: '未保存的更改',
-    message: `"${name}" 有尚未保存的更改`,
-    detail: '关闭前是否要保存？'
+    message,
+    detail
   });
   if (response === 0) return 'save';
   if (response === 1) return 'discard';
@@ -631,7 +810,7 @@ ipcMain.on('confirm-close-reply', (event, payload) => {
 });
 
 // 对话视图切 Tab 时，若有未保存标注，弹三态确认（保存/放弃/取消）
-ipcMain.handle('ask-chat-edits-confirm', async (event, { count }) => {
+ipcMain.handle('ask-chat-edits-confirm', async (event, { count } = {}) => {
   const { win } = ctxFromEvent(event);
   if (!win) return 'cancel';
   const { response } = await dialog.showMessageBox(win, {
@@ -669,10 +848,18 @@ function docBaseDir(ctx) {
 }
 function absolutizeImageSrc(html, baseDir) {
   return html.replace(/<img\b([^>]*?)\ssrc=(["'])([^"']+)\2/gi, (m, pre, q, src) => {
-    if (/^mpmedia:\/\//i.test(src)) { const abs = decodeURI(src.replace(/^mpmedia:\/\//i, '')); return `<img${pre} src=${q}file://${abs}${q}`; }
+    if (/^mpmedia:\/\//i.test(src)) {
+      try { return `<img${pre} src=${q}${localPathToFileUrl(urlToLocalPath(src))}${q}`; }
+      catch (err) { console.warn('[MarkMate:img-rewrite]', err); return m; }
+    }
     if (/^(https?:|file:|data:)/i.test(src)) return m;
     if (!baseDir) return m;
-    try { const abs = path.resolve(baseDir, src); const url = 'file://' + abs.split(path.sep).join('/'); return `<img${pre} src=${q}${url}${q}`; } catch (err) { console.warn('[MarkMate:img-rewrite]', err); return m; }
+    try {
+      // HTML 里的相对路径可能已是 URL 编码（my%20pic.png），先解码再转，否则 pathToFileURL 会二次编码成 %2520
+      let rel = src;
+      try { rel = decodeURI(src); } catch { /* 保持原样 */ }
+      return `<img${pre} src=${q}${localPathToFileUrl(path.resolve(baseDir, rel))}${q}`;
+    } catch (err) { console.warn('[MarkMate:img-rewrite]', err); return m; }
   });
 }
 let cachedVditorCss = null;
@@ -687,7 +874,7 @@ function wrapExportHtml(title, bodyHtml, opts = {}) {
   return `<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>${title}</title><style>${css}\n${baseCss}\n${opts.extraCss || ''}</style></head><body><div class="vditor-reset">${bodyHtml}</div></body></html>`;
 }
 
-ipcMain.handle('export-html', async (event, { html }) => {
+ipcMain.handle('export-html', async (event, { html } = {}) => {
   const { ctx, win } = ctxFromEvent(event);
   if (!win) return { saved: false };
   const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.html', filters: [{ name: 'HTML', extensions: ['html'] }] });
@@ -696,7 +883,7 @@ ipcMain.handle('export-html', async (event, { html }) => {
   catch (err) { dialog.showErrorBox('导出 HTML 失败', String(err)); return { saved: false }; }
 });
 
-ipcMain.handle('export-pdf', async (event, { html }) => {
+ipcMain.handle('export-pdf', async (event, { html } = {}) => {
   const { ctx, win } = ctxFromEvent(event);
   if (!win) return { saved: false };
   const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.pdf', filters: [{ name: 'PDF', extensions: ['pdf'] }] });
@@ -715,7 +902,7 @@ ipcMain.handle('export-pdf', async (event, { html }) => {
   finally { if (pdfWin) try { pdfWin.destroy(); } catch (err) { console.warn('[MarkMate]', err); } }
 });
 
-ipcMain.handle('export-docx', async (event, { buffer }) => {
+ipcMain.handle('export-docx', async (event, { buffer } = {}) => {
   const { ctx, win } = ctxFromEvent(event);
   if (!win) return { saved: false };
   const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.docx', filters: [{ name: 'Word 文档', extensions: ['docx'] }] });
@@ -729,11 +916,30 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
   if (!win) return { saved: false };
   const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.png', filters: [{ name: 'PNG 图片', extensions: ['png'] }] });
   if (canceled || !filePath) return { saved: false };
+  // 不能用 ipcMain.once：
+  // 1) 超时后 once 监听器不会被摘掉。下一次导出时，这个陈旧的监听器会抢先消费掉回复
+  //    并被移除，本次的 Promise 永远没人 resolve → 又走超时。从此每次导出都失败，只能重启。
+  // 2) once 不区分发送方。两个窗口几乎同时导出时，A 的监听器会吃掉 B 的回复，
+  //    A 导出的是 B 的文档内容，B 永远超时 —— 静默生成错误文件。
   const html = await new Promise((resolve) => {
-    if (!win) return resolve('');
-    ipcMain.once('export-png-html', (_e, payload) => resolve(payload && payload.html || ''));
-    win.webContents.send('request-png-html');
-    setTimeout(() => resolve(''), 5000);
+    if (!win || win.isDestroyed()) return resolve('');
+    const wc = win.webContents;
+    let settled = false;
+    let timer = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      ipcMain.removeListener('export-png-html', onReply);
+      if (timer) clearTimeout(timer);
+      resolve(value);
+    };
+    function onReply(e, payload) {
+      if (e.sender !== wc) return;          // 只认本窗口的回复
+      finish((payload && payload.html) || '');
+    }
+    ipcMain.on('export-png-html', onReply);
+    timer = setTimeout(() => finish(''), 5000);
+    wc.send('request-png-html');
   });
   if (!html) { dialog.showErrorBox('导出长图失败', '获取页面内容超时'); return { saved: false }; }
   let expWin = null;
@@ -979,7 +1185,7 @@ ipcMain.on('set-native-theme', (event, mode) => {
 });
 
 // ============ IPC: Tab 激活通知 ============
-ipcMain.on('tab-activated', (event, { filePath, codeMode, dirty }) => {
+ipcMain.on('tab-activated', (event, { filePath, codeMode, dirty } = {}) => {
   const { ctx, win } = ctxFromEvent(event);
   if (!ctx || !win) return;
   ctx.currentFilePath = filePath || null;
@@ -1033,7 +1239,7 @@ ipcMain.handle('get-recent-files', async () => {
 });
 
 // 渲染进程同步历史/收藏数据到主进程（持久化到 JSON 文件）
-ipcMain.on('sync-app-data', (event, { key, items }) => {
+ipcMain.on('sync-app-data', (event, { key, items } = {}) => {
   if (key === 'recentFiles' || key === 'favorites') {
     replaceAppData(key, items);
   }
@@ -1064,7 +1270,7 @@ ipcMain.handle('open-image-dialog', async (event) => {
   return { canceled: false, files };
 });
 
-ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }) => {
+ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer } = {}) => {
   const { ctx } = ctxFromEvent(event);
   try {
     const baseDir = ctx && ctx.currentFilePath
@@ -1080,7 +1286,7 @@ ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }
     if (fs.existsSync(fullPath)) { filename = `${stem}_${ts}${ext}`; fullPath = path.join(assetsDir, filename); }
     const buf = Buffer.from(buffer);
     fs.writeFileSync(fullPath, buf);
-    const fileUrl = 'mpmedia://' + encodeURI(fullPath.split(path.sep).join('/'));
+    const fileUrl = pathToMpmediaUrl(fullPath);
     const relPath = (ctx && ctx.currentFilePath) ? './assets/' + filename : '';
     return { url: fileUrl, relPath, path: fullPath };
   } catch (err) {
@@ -1112,6 +1318,9 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
+  // 回收 userData 里超期 / 失效的快照与草稿（见 pruneUserData 注释）
+  pruneUserData();
+
   // ============ Content Security Policy ============
   // 渐进式 CSP：先收紧 connect-src（防数据外泄）与 object-src（防插件），
   // script-src 暂时放行 'unsafe-inline'（vditor/prism 等第三方库依赖），
@@ -1211,13 +1420,12 @@ app.whenReady().then(() => {
 
   protocol.handle('mpmedia', (request) => {
     try {
-      let p = request.url.replace(/^mpmedia:\/\//i, '');
-      p = decodeURI(p);
-      if (!p.startsWith('/')) p = '/' + p;
-      // path.resolve 解析 .. 并归一化为绝对路径，再校验在用户 home 目录内，防路径穿越
-      const resolved = path.resolve(p);
+      // urlToLocalPath 内部用 path.resolve 解析 .. 并归一化，再校验在用户 home 目录内，防路径穿越
+      const resolved = urlToLocalPath(request.url);
       const homeDir = path.resolve(require('os').homedir());
-      if (!resolved.startsWith(homeDir + path.sep) && resolved !== homeDir) {
+      // Windows 文件系统大小写不敏感，盘符 / 用户目录大小写可能与 os.homedir() 不一致
+      const norm = (s) => process.platform === 'win32' ? s.toLowerCase() : s;
+      if (!norm(resolved).startsWith(norm(homeDir + path.sep)) && norm(resolved) !== norm(homeDir)) {
         return new Response('Forbidden', { status: 403 });
       }
       if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i.test(resolved)) {
