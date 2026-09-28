@@ -7,7 +7,7 @@
 ![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows-blue)
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![release](https://img.shields.io/badge/release-v2.1.1-3b82f6)
+![release](https://img.shields.io/badge/release-v2.1.2-3b82f6)
 
 [English](README.md) · **简体中文** · [🌐 文档站](https://sirkayzh.github.io/markmate)
 
@@ -149,12 +149,12 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 从 [Releases](https://github.com/SirKayZh/markmate/releases) 页面下载最新版本：
 
 **macOS：**
-- Apple 芯片（M1/M2/M3/M4…）：`MarkMate-2.1.1-arm64.dmg`
-- Intel：`MarkMate-2.1.1-x64.dmg`
+- Apple 芯片（M1/M2/M3/M4…）：`MarkMate-2.1.2-arm64.dmg`
+- Intel：`MarkMate-2.1.2-x64.dmg`
 
 **Windows：**
-- `MarkMate-2.1.1-x64-setup.exe` — 安装版（推荐）
-- `MarkMate-2.1.1-x64-portable.exe` — 便携版，解压即用
+- `MarkMate-2.1.2-x64-setup.exe` — 安装版（推荐）
+- `MarkMate-2.1.2-x64-portable.exe` — 便携版，解压即用
 
 > 两个平台的应用均**未经过代码签名/公证**。
 >
