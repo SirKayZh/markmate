@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>下载 MarkMate — 大模型时代的文本编辑器</title>
-  <meta name="description" content="下载 MarkMate v2.1.2 — 支持 macOS (Apple Silicon / Intel) 和 Windows，免费开源。Markdown 写作 + JSONL 数据浏览 + 数据标注 + 多格式导出。">
+  <meta name="description" content="下载 MarkMate v2.2.0 — 支持 macOS (Apple Silicon / Intel) 和 Windows，免费开源。Markdown 写作 + JSONL 数据浏览 + 数据标注 + 多格式导出。">
   <link rel="icon" type="image/png" href="images/icon.png">
   <link rel="stylesheet" href="styles.css">
   <!-- Google tag (gtag.js) -->
@@ -67,7 +67,7 @@
 <section class="hero hero-download">
   <div class="container">
     <img src="images/icon.png" alt="MarkMate" class="hero-icon">
-    <h1>MarkMate v2.1.2</h1>
+    <h1>MarkMate v2.2.0</h1>
     <p class="subtitle">
       为大模型工作流量身打造的桌面文件编辑器 —<br>
       <strong>Markdown 写作 + JSONL 数据浏览 + 数据标注 + 多格式导出</strong>
@@ -128,34 +128,34 @@
 <!-- 下载区：4 列横排 -->
 <section class="section" id="downloads">
   <div class="container">
-    <h2 class="section-title-sm">下载 · v2.1.2</h2>
+    <h2 class="section-title-sm">下载 · v2.2.0</h2>
     <p class="section-subtitle">选你的平台直接下载，所有版本同步发布在 <a href="https://github.com/SirKayZh/markmate/releases" target="_blank" rel="noopener">GitHub Releases</a></p>
     <div class="download-row">
-      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.2/MarkMate-2.1.2-arm64.dmg" class="dl-card" onclick="trackDownload('mac-arm64')">
+      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.2.0/MarkMate-2.2.0-arm64.dmg" class="dl-card" onclick="trackDownload('mac-arm64')">
         <div class="dl-platform">🍎 Apple Silicon</div>
         <div class="dl-arch">M1 / M2 / M3 / M4</div>
-        <div class="dl-name">MarkMate-2.1.2-arm64.dmg</div>
+        <div class="dl-name">MarkMate-2.2.0-arm64.dmg</div>
         <div class="dl-meta"><span>107 MB</span><span>macOS</span></div>
         <div class="dl-action">⬇ 下载</div>
       </a>
-      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.2/MarkMate-2.1.2-x64.dmg" class="dl-card" onclick="trackDownload('mac-x64')">
+      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.2.0/MarkMate-2.2.0-x64.dmg" class="dl-card" onclick="trackDownload('mac-x64')">
         <div class="dl-platform">🍎 Intel</div>
         <div class="dl-arch">x64 处理器</div>
-        <div class="dl-name">MarkMate-2.1.2-x64.dmg</div>
+        <div class="dl-name">MarkMate-2.2.0-x64.dmg</div>
         <div class="dl-meta"><span>116 MB</span><span>macOS</span></div>
         <div class="dl-action">⬇ 下载</div>
       </a>
-      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.2/MarkMate-2.1.2-x64-setup.exe" class="dl-card dl-card-primary" onclick="trackDownload('win-setup')">
+      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.2.0/MarkMate-2.2.0-x64-setup.exe" class="dl-card dl-card-primary" onclick="trackDownload('win-setup')">
         <div class="dl-platform">🪟 Windows 安装版 <span class="dl-recommend">推荐</span></div>
         <div class="dl-arch">NSIS 安装程序</div>
-        <div class="dl-name">MarkMate-2.1.2-x64-setup.exe</div>
+        <div class="dl-name">MarkMate-2.2.0-x64-setup.exe</div>
         <div class="dl-meta"><span>80 MB</span><span>Windows</span></div>
         <div class="dl-action">⬇ 下载</div>
       </a>
-      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.1.2/MarkMate-2.1.2-x64-portable.exe" class="dl-card" onclick="trackDownload('win-portable')">
+      <a href="https://github.com/SirKayZh/markmate/releases/download/v2.2.0/MarkMate-2.2.0-x64-portable.exe" class="dl-card" onclick="trackDownload('win-portable')">
         <div class="dl-platform">🪟 Windows 便携版</div>
         <div class="dl-arch">免安装，解压即用</div>
-        <div class="dl-name">MarkMate-2.1.2-x64-portable.exe</div>
+        <div class="dl-name">MarkMate-2.2.0-x64-portable.exe</div>
         <div class="dl-meta"><span>73 MB</span><span>Windows</span></div>
         <div class="dl-action">⬇ 下载</div>
       </a>
@@ -207,8 +207,21 @@
 
       <article class="cl-item cl-item-latest">
         <div class="cl-version">
-          <div class="cl-version-num">v2.1.2</div>
+          <div class="cl-version-num">v2.2.0</div>
           <span class="cl-badge cl-badge-latest">最新</span>
+          <div class="cl-date">2026-10-14</div>
+        </div>
+        <ul class="cl-changes">
+          <li>✨ 全角符号自动纠正：中文输入法敲出的 ＊｀＃＿ 实时纠正为半角，不再破坏 Markdown 语法（「视图」菜单可关闭）</li>
+          <li>✨ 智能文件读取：自动识别 UTF-16 / BOM 编码；损坏文件尽力恢复正文并提示，不再满屏乱码</li>
+          <li>🔒 原子写入覆盖到版本快照、崩溃恢复草稿、导出、图片保存等全部出口</li>
+        </ul>
+      </article>
+
+      <article class="cl-item">
+        <div class="cl-version">
+          <div class="cl-version-num">v2.1.2</div>
+          <span class="cl-badge cl-badge-minor">数据安全</span>
           <div class="cl-date">2026-09-28</div>
         </div>
         <ul class="cl-changes">
