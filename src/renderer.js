@@ -832,6 +832,8 @@ function initVditor(value) {
     placeholder: '开始输入…',
     input: () => {
       if (!syncingFromSource) {
+        // 全角语法符号纠正（＊｀＃＿ → *`#_），用户没输全角字符时零开销
+        AutoCorrect.correctSelectionTextNode();
         markDirty(true);
         scheduleUpdateStats();
         scheduleSyncSourceFromVditor();
@@ -1705,6 +1707,7 @@ function syncVditorFromSource() {
 }
 sourceEditor.addEventListener('input', () => {
   if (syncingFromVditor) return;
+  AutoCorrect.correctTextareaLine(sourceEditor); // 全角语法符号纠正（行首规则在此场景生效）
   markDirty(true);
   clearTimeout(sourceSyncTimer);
   sourceSyncTimer = setTimeout(() => { syncVditorFromSource(); }, 220);
@@ -1963,7 +1966,7 @@ function nextStyleTheme() { const keys = Object.keys(STYLE_THEMES); const idx = 
 // ============ IPC 事件绑定 ============
 
 // 文件打开：创建新 tab（而非替换当前内容）
-window.markmate.onFileOpened(({ path, content, codeMode }) => {
+window.markmate.onFileOpened(({ path, content, codeMode, recoverNote }) => {
   // 切换到新目录时需要失效缓存
   if (currentFilePath) {
     const oldDir = dirName(currentFilePath);
@@ -1976,11 +1979,22 @@ window.markmate.onFileOpened(({ path, content, codeMode }) => {
   updateFavoriteBtn();
   // 强制立即刷新一次文件列表（打开新文件需要立刻反映在列表中）
   refreshFileList();
+  // 编码降级恢复提示（主进程 readTextSmart 的 lossy 分支），状态栏展示不打断编辑
+  if (recoverNote) setAutoSaveStatus('⚠ ' + recoverNote);
 });
 
 window.markmate.onFileNew(() => {
   createTab(null, '', null);
 });
+
+// ========= 全角符号自动纠正开关（菜单 checkbox ↔ localStorage 双向同步）=========
+window.markmate.onToggleAutocorrect(() => {
+  const v = AutoCorrect.toggle();
+  window.markmate.sendAutocorrectState(v);
+  setAutoSaveStatus(v ? '已开启全角符号自动纠正' : '已关闭全角符号自动纠正');
+});
+// 启动时把 localStorage 里的状态同步给主进程菜单（菜单默认 unchecked）
+window.markmate.sendAutocorrectState(AutoCorrect.isEnabled());
 
 function applyCodeMode(mode) {
   const wasCodeMode = !!currentCodeMode;
@@ -3032,6 +3046,7 @@ function updateStatsForCode() {
 if (codeEditor) {
   codeEditor.addEventListener('input', () => {
     if (!currentCodeMode) return;
+    AutoCorrect.correctTextareaLine(codeEditor); // 全角符号会直接破坏 JSON/YAML 语法，纠正价值最高
     markDirty(true);
     updateStatsForCode();
     scheduleHighlightCode();

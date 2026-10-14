@@ -236,6 +236,42 @@ async function doOpen() {
   openFileInWindow(focusedWin, filePaths[0]);
 }
 
+// ============ 智能读取（借鉴 Word "恢复文本转换器"：打不开时降级抢救，而不是直接拒绝）============
+// fs.readFile(fp,'utf-8') 对非法字节序列不报错而是静默替换成 U+FFFD —— 用户看到满屏乱码
+// 却不知道文件有问题。这里读 Buffer 后显式分层：
+//   1) BOM 判定 UTF-16LE/BE（Windows 记事本旧格式的 .md 常见）
+//   2) 头部 NUL 字节比例判定二进制（打开图片/加密文档时给出明确说法，不展示乱码）
+//   3) UTF-8 严格解码（fatal）—— 能过说明内容健康
+//   4) 严格解码失败（截断的多字节序列 / 编码损坏）→ 降级为宽松解码：
+//      坏字节变 U+FFFD 但正文可读，并给用户可见的恢复提示
+async function readTextSmart(fp) {
+  const buf = await fs.promises.readFile(fp); // 真正的 IO 错误（不存在/无权限）在这里抛出
+  const ret = (text, encoding, extra) => Object.assign({ text, encoding }, extra || {});
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
+    return ret(buf.slice(2).toString('utf16le'), 'utf-16le');
+  }
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
+    return ret(Buffer.from(buf.slice(2)).swap16().toString('utf16le'), 'utf-16be');
+  }
+  let body = buf;
+  if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) {
+    body = buf.slice(3); // UTF-8 BOM
+  }
+  // 二进制探测：文本文件头部几乎不可能出现 NUL 字节
+  const head = body.slice(0, 8192);
+  let nulls = 0;
+  for (let i = 0; i < head.length; i++) { if (head[i] === 0) nulls++; }
+  if (head.length > 0 && nulls / head.length > 0.01) {
+    return ret(null, null, { binary: true });
+  }
+  try {
+    return ret(new TextDecoder('utf-8', { fatal: true }).decode(body), 'utf-8');
+  } catch (_) {
+    // 尽力恢复：坏字节替换为 U+FFFD，正文保持可读（截断文件 / 编码损坏）
+    return ret(new TextDecoder('utf-8').decode(body), 'utf-8', { lossy: true });
+  }
+}
+
 async function openFileInWindow(win, fp) {
   if (!fp) return;
   const ctx = getContext(win.id);
@@ -246,7 +282,12 @@ async function openFileInWindow(win, fp) {
   }
   try {
     // 异步读取，避免大文件冻结主进程（窗口可继续响应）
-    const rawContent = await fs.promises.readFile(fp, 'utf-8');
+    const { text: rawContent, binary, lossy } = await readTextSmart(fp);
+    if (binary) {
+      dialog.showErrorBox('无法打开',
+        '“' + path.basename(fp) + '” 看起来是二进制文件（图片、程序或加密文档），\nMarkMate 只能编辑文本文件。');
+      return;
+    }
     const codeLang = detectCodeLang(fp);
     ctx.currentFilePath = fp;
     ctx.currentCodeMode = codeLang ? { lang: codeLang } : null;
@@ -255,7 +296,9 @@ async function openFileInWindow(win, fp) {
     win.webContents.send('file-opened', {
       path: fp,
       content,
-      codeMode: ctx.currentCodeMode
+      codeMode: ctx.currentCodeMode,
+      // 编码降级恢复的提示由渲染层在状态栏展示，不弹阻断式对话框
+      recoverNote: lossy ? '文件包含损坏的编码字节，已尽力恢复显示（问题字节显示为 \uFFFD）' : ''
     });
     app.addRecentDocument(fp);
     if (win.isMinimized()) win.restore();
@@ -728,7 +771,8 @@ function snapshotVersion(fp, content) {
       try { const lastContent = fs.readFileSync(last, 'utf-8'); if (lastContent === content) return; } catch (err) { console.warn('[MarkMate]', err); }
     }
     const file = path.join(dir, `${timestamp()}.md`);
-    fs.writeFileSync(file, content, 'utf-8');
+    // 快照也走原子写：直写被中断留下半截快照，read-version 时才暴露
+    atomicWrite(file, content, 'utf-8');
     const all = fs.readdirSync(dir).filter(n => n.endsWith('.md')).sort();
     while (all.length > MAX_VERSIONS_PER_FILE) {
       const oldest = all.shift();
@@ -746,7 +790,9 @@ function saveDraft(content, ctx) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const winId = ctx ? getWinByCtx(ctx)?.id : 0;
     const file = path.join(dir, draftFilename(winId));
-    fs.writeFileSync(file, content, 'utf-8');
+    // 草稿是崩溃恢复的最后防线，同样走原子写：直写被中断 = 下次启动 check-draft
+    // 读失败返回 {has:false}，用户丢掉的是整份未保存内容。
+    atomicWrite(file, content, 'utf-8');
   } catch (err) { console.error('[draft]', err); }
 }
 function clearDraftIfAny(ctx) {
@@ -879,7 +925,7 @@ ipcMain.handle('export-html', async (event, { html } = {}) => {
   if (!win) return { saved: false };
   const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.html', filters: [{ name: 'HTML', extensions: ['html'] }] });
   if (canceled || !filePath) return { saved: false };
-  try { const finalHtml = wrapExportHtml(path.basename(filePath), absolutizeImageSrc(html, docBaseDir(ctx))); fs.writeFileSync(filePath, finalHtml, 'utf-8'); return { saved: true, path: filePath }; }
+  try { const finalHtml = wrapExportHtml(path.basename(filePath), absolutizeImageSrc(html, docBaseDir(ctx))); atomicWrite(filePath, finalHtml, 'utf-8'); return { saved: true, path: filePath }; }
   catch (err) { dialog.showErrorBox('导出 HTML 失败', String(err)); return { saved: false }; }
 });
 
@@ -896,7 +942,7 @@ ipcMain.handle('export-pdf', async (event, { html } = {}) => {
     await pdfWin.loadURL(dataUrl);
     await new Promise(r => setTimeout(r, 250));
     const data = await pdfWin.webContents.printToPDF({ printBackground: true, pageSize: 'A4', margins: { marginType: 'custom', top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 } });
-    fs.writeFileSync(filePath, data);
+    atomicWrite(filePath, data);
     return { saved: true, path: filePath };
   } catch (err) { dialog.showErrorBox('导出 PDF 失败', String(err)); return { saved: false }; }
   finally { if (pdfWin) try { pdfWin.destroy(); } catch (err) { console.warn('[MarkMate]', err); } }
@@ -907,7 +953,7 @@ ipcMain.handle('export-docx', async (event, { buffer } = {}) => {
   if (!win) return { saved: false };
   const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: exportStem(ctx) + '.docx', filters: [{ name: 'Word 文档', extensions: ['docx'] }] });
   if (canceled || !filePath) return { saved: false };
-  try { fs.writeFileSync(filePath, Buffer.from(buffer)); return { saved: true, path: filePath }; }
+  try { atomicWrite(filePath, Buffer.from(buffer)); return { saved: true, path: filePath }; }
   catch (err) { dialog.showErrorBox('导出 Word 失败', String(err)); return { saved: false }; }
 });
 
@@ -1011,7 +1057,7 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
         throw new Error(`文档过长（需 ${targetH}px / 实 ${h2}px）。`);
       }
     }
-    fs.writeFileSync(filePath, buf);
+    atomicWrite(filePath, buf);
     return { saved: true, path: filePath };
   } catch (err) { dialog.showErrorBox('导出长图失败', String(err)); return { saved: false }; }
   finally { if (expWin) try { expWin.destroy(); } catch (err) { console.warn('[MarkMate]', err); } }
@@ -1113,6 +1159,14 @@ function buildMenu() {
         },
         { label: '下一个样式主题', accelerator: 'CmdOrCtrl+Shift+/', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('next-style-theme'); } },
         { type: 'separator' },
+        {
+          // 勾选态由渲染层 localStorage 持久化，经 autocorrect-state 同步回来。
+          // 广播到所有窗口：开关状态存在共享 localStorage，但各窗口内存里的
+          // enabled 是独立变量，只发聚焦窗口会造成多窗口行为不一致。
+          label: '自动纠正全角符号', type: 'checkbox', checked: false,
+          click: () => { BrowserWindow.getAllWindows().forEach(w => { if (!w.isDestroyed()) w.webContents.send('toggle-autocorrect'); }); }
+        },
+        { type: 'separator' },
         { role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' },
         { type: 'separator' },
         { role: 'togglefullscreen', label: '全屏' }, { role: 'toggleDevTools', label: '开发者工具' }
@@ -1182,6 +1236,18 @@ ipcMain.on('renderer-ready', (event) => {
 
 ipcMain.on('set-native-theme', (event, mode) => {
   if (mode === 'light' || mode === 'dark' || mode === 'system') nativeTheme.themeSource = mode;
+});
+
+// ============ IPC: 全角符号自动纠正状态（菜单 checkbox 同步）============
+ipcMain.on('autocorrect-state', (event, enabled) => {
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
+  for (const top of menu.items) {
+    if (!top.submenu) continue;
+    for (const item of top.submenu.items) {
+      if (item.label === '自动纠正全角符号') { item.checked = !!enabled; return; }
+    }
+  }
 });
 
 // ============ IPC: Tab 激活通知 ============
@@ -1285,7 +1351,7 @@ ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }
     let fullPath = path.join(assetsDir, filename);
     if (fs.existsSync(fullPath)) { filename = `${stem}_${ts}${ext}`; fullPath = path.join(assetsDir, filename); }
     const buf = Buffer.from(buffer);
-    fs.writeFileSync(fullPath, buf);
+    atomicWrite(fullPath, buf);
     const fileUrl = pathToMpmediaUrl(fullPath);
     const relPath = (ctx && ctx.currentFilePath) ? './assets/' + filename : '';
     return { url: fileUrl, relPath, path: fullPath };

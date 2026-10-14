@@ -92,7 +92,9 @@ make_dmg () {
   fi
 
   mkdir -p "$stage"
-  cp -R "$app" "$stage/"
+  # rsync 而非 cp -R：部分受管环境里 cp -R 会因 app.asar 的 com.apple.provenance
+  # 扩展属性报 "Operation not permitted"，rsync 不复制该受保护属性，可正常通过。
+  rsync -a "$app" "$stage/"
   ln -s /Applications "$stage/Applications"   # 拖拽安装快捷方式
 
   hdiutil makehybrid -hfs -hfs-volume-name "$PRODUCT" -o "$raw" "$stage" >/dev/null

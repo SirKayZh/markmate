@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('markmate', {
   onRevealAssetsDir: (cb) => ipcRenderer.on('reveal-assets-dir', () => cb()),
   onConfirmClose: (cb) => ipcRenderer.on('confirm-close', () => cb()),
   onCloseActiveTab: (cb) => ipcRenderer.on('close-active-tab', () => cb()),
+  // 全角符号自动纠正：菜单开关
+  onToggleAutocorrect: (cb) => ipcRenderer.on('toggle-autocorrect', () => cb()),
+  sendAutocorrectState: (enabled) => ipcRenderer.send('autocorrect-state', !!enabled),
 
   // 渲染进程 -> 主进程
   saveContent: (content, saveAs) => ipcRenderer.invoke('save-content', { content, saveAs }),
