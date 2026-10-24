@@ -11,6 +11,16 @@
 
 ---
 
+## [2.2.1] - 2026-10-24
+
+修复 Windows 上的一个快捷键问题（GitHub 首位外部用户反馈，[issue #1](https://github.com/SirKayZh/markmate/issues/1)）。
+
+### 修复 Fixed
+
+- **Windows 下 `Ctrl++` 无法放大**。「视图 → 放大」此前使用 Electron 内置菜单 role 的默认快捷键 `Ctrl+Plus`，但 Windows 键盘上按 `Ctrl++` 实际发送的是 `Ctrl+=` 或 `Ctrl+Shift+=`（`+` 需要 Shift 组合），快捷键永远匹配不上（缩小 `Ctrl+-` 不需要 Shift，因此一直正常）。现改为显式注册：`Ctrl++`、`Ctrl+=`、`Ctrl+Shift+=` 三组快捷键均可放大；`Ctrl+-` 缩小、`Ctrl+0` 恢复实际大小保持不变。macOS 行为不变。
+
+---
+
 ## [2.2.0] - 2026-10-14
 
 本版本把 Microsoft Word 的两项成熟设计引入 MarkMate：**AutoCorrect（自动更正）**与**「恢复文本转换器」思路（打不开的文件降级抢救，而不是直接拒绝）**。功能取舍源自对 Word for Mac 的逆向分析（33,000+ 配置文件的架构模式），全部改动经 27 项回归 + 26 项专项 E2E 测试验证（53/53 通过）。
