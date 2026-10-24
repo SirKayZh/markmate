@@ -1076,6 +1076,20 @@ ipcMain.handle('reveal-assets-dir', async (event) => {
   catch (err) { return { ok: false, error: String(err) }; }
 });
 
+// ============ 视图缩放 ============
+// 不用 role:'zoomIn' 等：其默认 accelerator CmdOrCtrl+Plus 在 Windows 键盘上匹配不到
+// （按 Ctrl++ 实际发送 Ctrl+= 或 Ctrl+Shift+=，'+' 需 Shift 组合），见 issue #1。
+// 改为显式 accelerator + 隐藏别名项，行为等价（zoomLevel 0.5 步进，0 复位）。
+const zoomBy = (dir, win) => {
+  // 菜单 click 会传入目标窗口；非菜单调用（兜底）用聚焦窗口
+  const w = win && !win.isDestroyed() ? win : BrowserWindow.getFocusedWindow();
+  if (!w || w.isDestroyed()) return;
+  try {
+    const lv = w.webContents.getZoomLevel();
+    w.webContents.setZoomLevel(dir === 0 ? 0 : lv + 0.5 * dir);
+  } catch (err) { console.warn('[MarkMate:zoom]', err); }
+};
+
 // ============ 菜单 ============
 function buildMenu() {
   const template = [
@@ -1167,7 +1181,11 @@ function buildMenu() {
           click: () => { BrowserWindow.getAllWindows().forEach(w => { if (!w.isDestroyed()) w.webContents.send('toggle-autocorrect'); }); }
         },
         { type: 'separator' },
-        { role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' },
+        { label: '实际大小', accelerator: 'CmdOrCtrl+0', click: (mi, w) => zoomBy(0, w) },
+        { label: '放大', accelerator: 'CmdOrCtrl+Plus', click: (mi, w) => zoomBy(1, w) },
+        { label: '放大', accelerator: 'CmdOrCtrl+=', visible: false, click: (mi, w) => zoomBy(1, w) },
+        { label: '放大', accelerator: 'CmdOrCtrl+Shift+=', visible: false, click: (mi, w) => zoomBy(1, w) },
+        { label: '缩小', accelerator: 'CmdOrCtrl+-', click: (mi, w) => zoomBy(-1, w) },
         { type: 'separator' },
         { role: 'togglefullscreen', label: '全屏' }, { role: 'toggleDevTools', label: '开发者工具' }
       ]
