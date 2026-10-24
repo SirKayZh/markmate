@@ -22,7 +22,9 @@ echo "==> 打包 $PRODUCT Windows x64 v$VERSION"
 # 一旦环境里存在 GH_TOKEN / GITHUB_TOKEN，electron-builder 会自动把产物上传到 GitHub Release ——
 # 那是个不可回滚的对外动作，而本项目约定「构建只产出，发布由人显式执行」。
 echo "==> 打包 Windows x64（NSIS 安装版 + 便携版）"
-env -u ELECTRON_RUN_AS_NODE npx electron-builder --win --x64 --publish never >/dev/null
+# env -u：ELECTRON_RUN_AS_NODE / NODE_OPTIONS 均为受管环境注入（后者会拦 asar 写操作），
+# 清掉后脚本裸跑成立，不依赖外层环境，见 build-dmg.sh 同款注释。
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS npx electron-builder --win --x64 --publish never >/dev/null
 
 # 产物名由 package.json 的 win.artifactName / portable.artifactName 直接决定
 # （${productName}-${version}-${arch}-setup.${ext} 等），不需要再重命名。

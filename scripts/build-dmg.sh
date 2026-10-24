@@ -37,7 +37,10 @@ rm -rf "$REL/mac" "$REL/mac-arm64"
 # --publish never：package.json 配了 github publish provider，环境里有 GH_TOKEN 时
 # electron-builder 会自动上传 Release。本项目约定「构建只产出，发布由人显式执行」。
 echo "==> [1/4] electron-builder 构建 .app (arm64 + x64)"
-env -u ELECTRON_RUN_AS_NODE npx electron-builder --mac --dir --arm64 --x64 --publish never >/dev/null
+# env -u：ELECTRON_RUN_AS_NODE 让 Electron 以纯 node 模式跑；NODE_OPTIONS 是受管环境
+# 注入的 fs-shim，会拦截 electron-builder 的 asar 写操作（Brokered file token refused）。
+# 两者都清掉，脚本在任何环境下裸跑都成立，不依赖外层再包一层 env。
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS npx electron-builder --mac --dir --arm64 --x64 --publish never >/dev/null
 echo "    .app 构建完成"
 
 # 1.5) 出 zip + latest-mac.yml —— macOS 自动更新的必需品
@@ -48,7 +51,7 @@ echo "    .app 构建完成"
 # 后果：main.js 里 autoUpdater 是启用的、README 也把「自动更新」当卖点，
 # 但所有 macOS 用户点检查更新都拿不到清单（而失败是静默的，用户只会以为自己已是最新版）。
 echo "==> [2/4] 生成 zip + latest-mac.yml（macOS 自动更新必需）"
-env -u ELECTRON_RUN_AS_NODE npx electron-builder --mac zip --arm64 --x64 --publish never >/dev/null
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS npx electron-builder --mac zip --arm64 --x64 --publish never >/dev/null
 if [ ! -f "$REL/latest-mac.yml" ]; then
   echo "❌ 未生成 $REL/latest-mac.yml —— macOS 自动更新会失效，中止发版。" >&2
   echo "   排查：确认 package.json 的 build.mac.target 含 zip、且 build.publish 配置存在。" >&2
