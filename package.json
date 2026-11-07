@@ -1,7 +1,7 @@
 {
   "name": "markmate",
   "version": "2.2.1",
-  "description": "A lightweight WYSIWYG Markdown editor for macOS & Windows — instant editing, outline navigation, auto-save, JSON/YAML/XML viewer, and PDF/HTML/Word export.",
+  "description": "A lightweight WYSIWYG Markdown editor for macOS, Windows & Linux — instant editing, outline navigation, auto-save, JSON/YAML/XML viewer, and PDF/HTML/Word export.",
   "main": "main.js",
   "author": "MarkMate Contributors",
   "license": "MIT",
@@ -17,13 +17,17 @@
     "electron",
     "vditor",
     "macos",
+    "windows",
+    "linux",
     "wysiwyg"
   ],
   "scripts": {
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
     "dmg": "bash scripts/build-dmg.sh",
-    "win": "env -u ELECTRON_RUN_AS_NODE npx electron-builder --win --x64",
-    "win:portable": "env -u ELECTRON_RUN_AS_NODE npx electron-builder --win portable --x64",
+    "win": "node scripts/fix-nsis-multiuser.js && env -u ELECTRON_RUN_AS_NODE npx electron-builder --win --x64",
+    "win:portable": "node scripts/fix-nsis-multiuser.js && env -u ELECTRON_RUN_AS_NODE npx electron-builder --win portable --x64",
+    "linux": "bash scripts/build-linux.sh",
+    "linux:test": "bash scripts/linux/remote.sh",
     "release:patch": "bash scripts/release.sh patch",
     "release:minor": "bash scripts/release.sh minor",
     "release:major": "bash scripts/release.sh major"
@@ -34,6 +38,7 @@
     "directories": {
       "output": "release"
     },
+    "afterPack": "scripts/linux-after-pack.js",
     "files": [
       "main.js",
       "preload.js",
@@ -93,6 +98,91 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-${arch}-portable.${ext}"
+    },
+    "linux": {
+      "icon": "build/icons",
+      "category": "Office",
+      "executableArgs": ["--no-sandbox"],
+      "desktop": {
+        "StartupWMClass": "markmate"
+      },
+      "maintainer": "MarkMate Contributors <markmate@example.com>",
+      "synopsis": "A lightweight WYSIWYG Markdown editor",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "fileAssociations": [
+        {
+          "ext": "md",
+          "name": "Markdown Document",
+          "mimeType": "text/markdown"
+        },
+        {
+          "ext": "markdown",
+          "name": "Markdown Document",
+          "mimeType": "text/markdown"
+        },
+        {
+          "ext": "mdown",
+          "name": "Markdown Document",
+          "mimeType": "text/markdown"
+        },
+        {
+          "ext": "mkd",
+          "name": "Markdown Document",
+          "mimeType": "text/markdown"
+        },
+        {
+          "ext": "mdtext",
+          "name": "Markdown Document",
+          "mimeType": "text/markdown"
+        },
+        {
+          "ext": "txt",
+          "name": "Text Document",
+          "mimeType": "text/plain"
+        },
+        {
+          "ext": "xml",
+          "name": "Code / Config File",
+          "mimeType": "application/xml"
+        },
+        {
+          "ext": "json",
+          "name": "Code / Config File",
+          "mimeType": "application/json"
+        },
+        {
+          "ext": "jsonl",
+          "name": "Code / Config File",
+          "mimeType": "application/json"
+        },
+        {
+          "ext": "yml",
+          "name": "Code / Config File",
+          "mimeType": "application/x-yaml"
+        },
+        {
+          "ext": "yaml",
+          "name": "Code / Config File",
+          "mimeType": "application/x-yaml"
+        }
+      ]
+    },
+    "appImage": {
+      "executableArgs": ["--no-sandbox", "--appimage-extract-and-run"]
     },
     "fileAssociations": [
       {

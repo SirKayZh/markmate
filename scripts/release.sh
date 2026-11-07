@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# release.sh — 一键发版：bump 版本 → 打包 macOS DMG + Windows exe → git 提交并打 tag
+# release.sh — 一键发版：bump 版本 → 打包 macOS DMG + Windows exe + Linux AppImage/deb → git 提交并打 tag
 #
 # 用法：
 #   bash scripts/release.sh patch   # bug 修复  1.0.1 -> 1.0.2
@@ -115,7 +115,10 @@ bash scripts/build-dmg.sh
 echo "==> 开始打包 Windows exe (NSIS 安装版 + 便携版)"
 bash scripts/build-win.sh
 
-# 产物总断言：子脚本各自也会断言，这里再兜一次，确保 4 个包 + 2 个更新清单齐全。
+echo "==> 开始打包 Linux (AppImage + deb)"
+bash scripts/build-linux.sh
+
+# 产物总断言：子脚本各自也会断言，这里再兜一次，确保 6 个包 + 3 个更新清单齐全。
 # 少了这道检查的话，任一子脚本静默失败都会让流程继续 commit + 打 tag + 打印"发版完成"。
 echo "==> 校验产物齐全"
 MISSING=""
@@ -124,8 +127,12 @@ for f in \
   "${REL}/${PRODUCT}-${NEW}-x64.dmg" \
   "${REL}/${PRODUCT}-${NEW}-x64-setup.exe" \
   "${REL}/${PRODUCT}-${NEW}-x64-portable.exe" \
+  "${REL}/${PRODUCT}-${NEW}-x86_64.AppImage" \
+  "${REL}/${PRODUCT}-${NEW}-x86_64.run" \
+  "${REL}/${PRODUCT}-${NEW}-amd64.deb" \
   "${REL}/latest.yml" \
-  "${REL}/latest-mac.yml" ; do
+  "${REL}/latest-mac.yml" \
+  "${REL}/latest-linux.yml" ; do
   [ -f "${f}" ] || MISSING="${MISSING}\n    缺少：${f}"
 done
 if [ -n "${MISSING}" ]; then
@@ -133,7 +140,7 @@ if [ -n "${MISSING}" ]; then
   printf '%b\n' "${MISSING}" >&2
   exit 1
 fi
-echo "    4 个安装包 + 2 个更新清单齐全 ✅"
+echo "    6 个安装包 + 3 个更新清单齐全 ✅"
 
 # ============================================================
 # 阶段 4：提交并打 tag
@@ -158,7 +165,7 @@ trap - ERR INT TERM   # 走到这里已经成功，撤掉回滚
 
 echo ""
 echo "==> 发版完成 🎉  v${NEW}"
-echo "    产物在 release/ 目录：macOS DMG(arm64/x64) + Windows exe(setup/portable) + 更新清单"
+echo "    产物在 release/ 目录：macOS DMG(arm64/x64) + Windows exe(setup/portable) + Linux(AppImage/deb) + 更新清单"
 echo ""
 echo "    接下来手动执行（脚本不会自动推送 / 自动发布）："
 echo "    1) 推送：git push origin main && git push origin v${NEW}"
@@ -171,10 +178,14 @@ echo "         release/${PRODUCT}-${NEW}-x64.dmg \\"
 echo "         release/${PRODUCT}-${NEW}-x64-setup.exe \\"
 echo "         release/${PRODUCT}-${NEW}-x64-portable.exe \\"
 echo "         release/${PRODUCT}-${NEW}-x64-setup.exe.blockmap \\"
+echo "         release/${PRODUCT}-${NEW}-x86_64.AppImage \\"
+echo "         release/${PRODUCT}-${NEW}-x86_64.run \\"
+echo "         release/${PRODUCT}-${NEW}-amd64.deb \\"
 echo "         release/${PRODUCT}-${NEW}-arm64-mac.zip \\"
 echo "         release/${PRODUCT}-${NEW}-mac.zip \\"
-echo "         release/latest.yml release/latest-mac.yml \\"
+echo "         release/latest.yml release/latest-mac.yml release/latest-linux.yml \\"
 echo "         --title \"${PRODUCT} v${NEW}\" --notes-file RELEASE_NOTES.md"
 echo ""
 echo "    两个 mac zip 必须一起上传：latest-mac.yml 里按名字引用它们，"
 echo "    只传 yml 不传 zip 的话 macOS 更新检查能成功、下载却 404。"
+echo "    同理，latest-linux.yml 按名字引用 AppImage，AppImage 与 yml 缺一不可。"

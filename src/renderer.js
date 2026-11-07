@@ -3,8 +3,12 @@ let vditor = null;
 
 // ---- 平台适配 ----
 const isMac = window.markmate.platform === 'darwin';
+const isLinux = window.markmate.platform === 'linux';
 document.body.setAttribute('data-platform', window.markmate.platform);
-const modKey = () => isMac ? '⌘' : 'Ctrl';
+// Mac 写成 ⌘F。Windows / Linux 必须是 Ctrl+F，只换成 Ctrl 会黏成 CtrlF。
+const modKey = () => isMac ? '⌘' : 'Ctrl+';
+// XFCE 等桌面把 Alt+Ctrl+L 用来锁屏，这个组合到不了程序里。Linux 改用 Ctrl+Shift+L。
+const formatShortcut = () => isMac ? '⌥⌘L' : (isLinux ? 'Ctrl+Shift+L' : 'Alt+Ctrl+L');
 const modLabel = (shortcut) => shortcut.replace(/⌘/g, modKey());
 
 // ---- 路径工具（跨平台）----
@@ -17,7 +21,13 @@ function baseName(p) {
   return String(p == null ? '' : p).split(/[\\/]/).pop();
 }
 function dirName(p) {
-  return String(p == null ? '' : p).replace(/[\\/][^\\/]*$/, '');
+  const s = String(p == null ? '' : p);
+  const cut = s.replace(/[\\/][^\\/]*$/, '');
+  // C:\笔记.md 截完只剩 C:。Windows 上 C: 是「这个盘的当前目录」，不是盘符根。
+  if (/^[a-zA-Z]:$/.test(cut)) return cut + '\\';
+  // /笔记.md 截完是空串，目录其实是根。
+  if (!cut && s.charAt(0) === '/') return '/';
+  return cut;
 }
 // 本地绝对路径 → file:// URL（浏览器端实现，与主进程 pathToFileURL 行为对齐）
 function localPathToFileUrl(p) {
@@ -673,6 +683,11 @@ function detachTabToNewWindow(tab) {
 
 // Tab 快捷键：⌘T/Ctrl+T 新建, ⌘W/Ctrl+W 关闭
 window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'n' || e.key === 'N')) {
+    e.preventDefault();
+    e.stopPropagation();
+    createTab(null, '', null);
+  }
   if ((e.metaKey || e.ctrlKey) && e.key === 't' && !e.shiftKey) {
     e.preventDefault();
     e.stopPropagation();
@@ -683,7 +698,12 @@ window.addEventListener('keydown', (e) => {
     e.stopPropagation();
     if (activeTabId) closeTab(activeTabId);
   }
-  // 关闭窗口快捷键（⌘/Ctrl+Shift+W）
+  // 关窗口用 Shift，避免和关标签的 Ctrl+W 抢同一个键
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'w' || e.key === 'W')) {
+    e.preventDefault();
+    e.stopPropagation();
+    window.close();
+  }
 }, true);
 
 // ⌘1~9 切换 tab
@@ -1646,8 +1666,12 @@ async function doAutoSave() {
       const t = getActiveTab();
       if (t) { t.content = content; t.dirty = false; }
       setAutoSaveStatus('已自动保存 · ' + nowHM());
+    } else if (res && res.conflict) {
+      setAutoSaveStatus('文件已在外部修改，未自动覆盖');
     } else if (res && res.draft) {
       setAutoSaveStatus('草稿已暂存 · ' + nowHM());
+    } else if (res && res.error) {
+      setAutoSaveStatus('自动保存失败');
     }
   } catch (err) {
     setAutoSaveStatus('自动保存失败');
@@ -1880,6 +1904,12 @@ function toggleTheme() {
   if (styleTheme !== 'default') { styleTheme = 'default'; document.body.removeAttribute('data-style-theme'); localStorage.setItem('markmate-style-theme', 'default'); }
 }
 systemDark.addEventListener('change', () => { if (themeMode === 'system') applyThemeMode(false); });
+window.markmate.onNativeThemeUpdated((shouldDark) => {
+  if (themeMode !== 'system') return;
+  darkMode = !!shouldDark;
+  applyEditorTheme();
+  if (vditor && vditorReady) vditor.setTheme(darkMode ? 'dark' : 'classic', darkMode ? 'dark' : 'light', darkMode ? 'native' : 'github');
+});
 
 function toggleSource() {
   if (currentCodeMode) return;
@@ -1973,14 +2003,22 @@ window.markmate.onFileOpened(({ path, content, codeMode, recoverNote }) => {
     const newDir = dirName(path);
     if (oldDir !== newDir) _dirCache = { dir: null, entries: null, time: 0 };
   }
-  createTab(path, content, codeMode);
+  // 1.5MB、几千段的 Markdown 交给所见即所得，主线程会忙几分钟，窗口点不动。
+  // 这种文件改用纯文本，打开和滚动都还能用。
+  let openMode = codeMode;
+  let note = recoverNote || '';
+  if (!openMode && typeof content === 'string' && content.length > 512 * 1024) {
+    openMode = { lang: 'text' };
+    note = (note ? note + '。' : '') + '文件较大，已用纯文本打开';
+  }
+  createTab(path, content, openMode);
   // switchToTab 内已触发 debouncedRefreshFileList + scheduleOutlineRefresh
   addRecentFile(path);
   updateFavoriteBtn();
   // 强制立即刷新一次文件列表（打开新文件需要立刻反映在列表中）
   refreshFileList();
   // 编码降级恢复提示（主进程 readTextSmart 的 lossy 分支），状态栏展示不打断编辑
-  if (recoverNote) setAutoSaveStatus('⚠ ' + recoverNote);
+  if (note) setAutoSaveStatus(note.indexOf('文件较大') === 0 ? note : '⚠ ' + note);
 });
 
 window.markmate.onFileNew(() => {
@@ -2008,7 +2046,7 @@ function applyCodeMode(mode) {
   const tag = document.getElementById('status-codelang');
   if (tag) { tag.textContent = isCode ? mode.lang.toUpperCase() : ''; tag.style.display = isCode ? '' : 'none'; }
   const fmtBtn = document.getElementById('format-code-btn');
-  if (fmtBtn) { fmtBtn.disabled = !isCode; fmtBtn.title = isCode ? '格式化代码（⌥⌘L）' : '格式化（仅 JSON/XML/YAML 等代码文件可用）'; }
+  if (fmtBtn) { fmtBtn.disabled = !isCode; fmtBtn.title = isCode ? `格式化代码（${formatShortcut()}）` : '格式化（仅 JSON/XML/YAML 等代码文件可用）'; }
   const srcBtn = document.getElementById('source-toggle');
   if (srcBtn) { srcBtn.disabled = isCode; srcBtn.title = isCode ? '切换源码面板（仅 Markdown 文件可用）' : `切换源码面板（${modKey()}E）`; }
 
@@ -2454,7 +2492,7 @@ function updateJsonViewButtons(activeView) {
   if (fmtBtn) {
     const isJsonLike = currentCodeMode && (currentCodeMode.lang === 'json' || currentCodeMode.lang === 'jsonl');
     fmtBtn.disabled = !isJsonLike;
-    fmtBtn.title = isJsonLike ? '格式化（⌥⌘L）' : '格式化（仅 JSON/XML/YAML 等代码文件可用）';
+    fmtBtn.title = isJsonLike ? `格式化（${formatShortcut()}）` : '格式化（仅 JSON/XML/YAML 等代码文件可用）';
   }
 }
 
@@ -3123,6 +3161,7 @@ window.markmate.onRequestSave(async ({ saveAs }) => {
       addRecentFile(res.path);
       if (sidebarTab === 'files') refreshFileList();
     }
+    setAutoSaveStatus('已保存 · ' + nowHM());
   }
   return res;
 });
@@ -3371,7 +3410,7 @@ function renderQuickResults(query) {
       // 只显示所在目录。原先用 shortPath.replace(item.name, '') 去掉文件名，
       // 但 replace 替换的是「第一处」出现：文件名恰好也是上级目录名的一部分时会截错位置。
       // home 缩写同时兼容 macOS（/Users/x）与 Windows（C:\Users\x）。
-      const shortDir = dirName(item.path).replace(/^(\/Users\/[^/]+|[a-zA-Z]:[\\/]Users[\\/][^\\/]+)/i, '~');
+      const shortDir = dirName(item.path).replace(/^(\/Users\/[^/]+|\/home\/[^/]+|[a-zA-Z]:[\\/]Users[\\/][^\\/]+)/i, '~');
       div.innerHTML = `<span class="qoi-name">${escapeHtml(item.name)}</span><span class="qoi-tag">${item.type === 'fav' ? '★' : ''}</span><span class="qoi-path">${escapeHtml(shortDir + (shortDir ? '/' : ''))}</span>`;
       div.addEventListener('click', () => openQuickItem(item));
       qoResults.appendChild(div);
@@ -3487,7 +3526,16 @@ async function formatCurrentCode() {
 }
 const formatBtn = document.getElementById('format-code-btn');
 if (formatBtn) formatBtn.addEventListener('click', (e) => { e.preventDefault(); formatCurrentCode(); });
-window.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.altKey && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); e.stopPropagation(); formatCurrentCode(); } }, true);
+window.addEventListener('keydown', (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.repeat) return;
+  if (e.key !== 'l' && e.key !== 'L') return;
+  const linuxChord = isLinux && e.shiftKey && !e.altKey;
+  const altChord = e.altKey && !e.shiftKey;
+  if (!linuxChord && !altChord) return;
+  e.preventDefault();
+  e.stopPropagation();
+  formatCurrentCode();
+}, true);
 
 const sourceToggleBtn = document.getElementById('source-toggle');
 if (sourceToggleBtn) sourceToggleBtn.addEventListener('click', (e) => { e.preventDefault(); toggleSource(); });
@@ -3552,11 +3600,11 @@ window.markmate.onUpdateStatus((info) => {
       if (!banner || !msgEl) return;
       viewBtn.disabled = false;
       viewBtn.style.display = 'inline-block';
-      if (window.markmate.platform === 'darwin') {
-        // macOS 降级路径：electron-updater 下载完会校验代码签名，而本项目目前只做
-        // ad-hoc 签名（没有 Apple Developer ID），验签会失败。与其让用户点了"下载更新"
-        // 再收到一条失败提示，不如直接引导去下载页手动更新。
-        // 等哪天配了 Developer ID + 公证，把这个分支去掉即可恢复自动下载。
+      if (window.markmate.platform === 'darwin' || window.markmate.portable) {
+        // macOS：更新包要验签名，当前没有 Developer ID，下完也会失败。
+        // Windows 便携版：更新清单里只有 NSIS 安装包，下完重启会弹出安装程序，
+        // 手里的免安装 exe 不会被换掉。
+        // 这两种都改成去下载页自己下。macOS 配了公证之后可以拿掉 darwin 这一支。
         msgEl.textContent = `MarkMate ${info.version} 已发布，前往下载页更新`;
         viewBtn.textContent = '前往下载';
         viewBtn.onclick = () => {
@@ -3847,7 +3895,15 @@ if (findInput) {
 if (findPrev) findPrev.addEventListener('click', findGoPrev);
 if (findNext) findNext.addEventListener('click', findGoNext);
 if (findCloseBtn) findCloseBtn.addEventListener('click', hideFind);
-window.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); showFind(); } if (e.key === 'Escape' && findActive && findInput && !findInput.matches(':focus')) hideFind(); }, true);
+window.addEventListener('keydown', (e) => {
+  // 不带 Shift/Alt 才是搜索。Ctrl+Shift+F 是专注模式，不能在这里截走。
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+    e.preventDefault();
+    e.stopPropagation();
+    showFind();
+  }
+  if (e.key === 'Escape' && findActive && findInput && !findInput.matches(':focus')) hideFind();
+}, true);
 window.markmate.onShowFind(() => showFind());
 
 // 菜单「关闭标签页」（⌘W/Ctrl+W）——菜单点击走此 IPC；快捷键另有 keydown 监听兜底

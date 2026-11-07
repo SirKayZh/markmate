@@ -1,7 +1,8 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme, protocol, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { pathToFileURL } = require('url');
+const { pathToFileURL, fileURLToPath } = require('url');
+const os = require('os');
 
 // ============ 平台检测 ============
 const isMac = process.platform === 'darwin';
@@ -150,6 +151,10 @@ const CODE_LANG_BY_EXT = {
   '.xml': 'xml', '.json': 'json', '.jsonl': 'jsonl', '.yml': 'yaml', '.yaml': 'yaml',
 };
 const CODE_EXT_LIST = Object.keys(CODE_LANG_BY_EXT).map(e => e.slice(1));
+const TEXT_FILE_RE = /\.(md|markdown|mdown|mkd|mdtext|txt)$/i;
+// 打开过的文档目录（含上一级，覆盖 ./assets 和 ../images）。
+// mpmedia 不能只认 $HOME：Linux 上笔记常在 /mnt、/media、/data，未保存文档的图片在 /tmp。
+const allowedMediaDirs = new Set();
 function detectCodeLang(fp) {
   if (!fp) return null;
   const ext = path.extname(fp).toLowerCase();
@@ -227,7 +232,7 @@ async function doOpen() {
   const { canceled, filePaths } = await dialog.showOpenDialog(focusedWin, {
     properties: ['openFile'],
     filters: [
-      { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'txt'] },
+      { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'mdtext', 'txt'] },
       { name: '代码/配置文件', extensions: CODE_EXT_LIST },
       { name: '所有文件', extensions: ['*'] }
     ]
@@ -272,8 +277,36 @@ async function readTextSmart(fp) {
   }
 }
 
+function rememberMediaDir(fp) {
+  if (typeof fp !== 'string' || !fp) return;
+  let dir;
+  try { dir = path.dirname(path.resolve(fp)); } catch { return; }
+  const root = path.parse(dir).root;
+  // 根目录本身不能当放行前缀，否则 / 会放行整块磁盘
+  if (dir && dir !== root) allowedMediaDirs.add(dir);
+  const parent = path.dirname(dir);
+  if (parent && parent !== dir && parent !== root) allowedMediaDirs.add(parent);
+}
+
+function mediaPathAllowed(resolved) {
+  const norm = (s) => process.platform === 'win32' ? s.toLowerCase() : s;
+  const roots = [];
+  const push = (p) => { try { if (p) roots.push(path.resolve(p)); } catch { /* 跳过无效根 */ } };
+  push(os.homedir());
+  push(os.tmpdir());
+  try { push(app.getPath('temp')); } catch { /* ready 之前没有 */ }
+  try { push(app.getPath('userData')); } catch { /* ready 之前没有 */ }
+  for (const dir of allowedMediaDirs) push(dir);
+  const n = norm(resolved);
+  return roots.some((root) => {
+    const r = norm(root);
+    return n === r || n.startsWith(r.endsWith(path.sep) ? r : r + path.sep);
+  });
+}
+
 async function openFileInWindow(win, fp) {
   if (!fp) return;
+  rememberMediaDir(fp);
   const ctx = getContext(win.id);
   if (!ctx || !ctx.rendererReady) {
     if (ctx) ctx.pendingOpenPath = fp;  // 按窗口隔离，避免多窗口竞态
@@ -290,6 +323,7 @@ async function openFileInWindow(win, fp) {
     }
     const codeLang = detectCodeLang(fp);
     ctx.currentFilePath = fp;
+    noteFileStamp(ctx, fp);
     ctx.currentCodeMode = codeLang ? { lang: codeLang } : null;
     setTitle(win, fp, false);
     const content = codeLang ? rawContent : expandImagePaths(rawContent, fp);
@@ -329,6 +363,22 @@ function openFile(fp) {
 // 都会留下 0 字节或半截文件，且原内容不可恢复。文件越大窗口期越长。
 // 同分区 rename 是原子操作，所以目标文件要么是旧内容、要么是完整新内容，不存在中间态。
 function atomicWrite(fp, data, enc) {
+  const dir = path.dirname(fp);
+  try { fs.accessSync(dir, fs.constants.W_OK); }
+  catch {
+    const err = new Error('没有权限写入这个目录：' + dir);
+    err.code = 'EACCES';
+    throw err;
+  }
+  // Linux 上目录可写时，rename 能盖掉一个 0444 的文件。先看文件本身能不能写。
+  if (fs.existsSync(fp)) {
+    try { fs.accessSync(fp, fs.constants.W_OK); }
+    catch {
+      const err = new Error('这个文件是只读的，没有覆盖：' + path.basename(fp));
+      err.code = 'EACCES';
+      throw err;
+    }
+  }
   const tmp = fp + '.markmate.tmp';
   // 记下原文件权限，rename 后补回（rename 会带走临时文件的默认权限）
   let mode = null;
@@ -350,9 +400,29 @@ function atomicWrite(fp, data, enc) {
   if (mode != null) { try { fs.chmodSync(fp, mode); } catch (err) { console.warn('[MarkMate]', err); } }
 }
 
+function noteFileStamp(ctx, fp) {
+  if (!ctx || !fp) return;
+  if (!ctx.fileStamps) ctx.fileStamps = new Map();
+  const key = path.resolve(fp);
+  try { ctx.fileStamps.set(key, fs.statSync(fp).mtimeMs); }
+  catch { ctx.fileStamps.delete(key); }
+}
+
+// 打开或我们自己写过之后记下修改时间。磁盘上的时间比这个新，说明外面改过。
+function fileChangedOutside(ctx, fp) {
+  if (!ctx || !fp || !ctx.fileStamps) return false;
+  const key = path.resolve(fp);
+  if (!ctx.fileStamps.has(key)) return false;
+  let now;
+  try { now = fs.statSync(fp).mtimeMs; } catch { return false; }
+  return now > ctx.fileStamps.get(key) + 1;
+}
+
 function writeFile(fp, content, ctx) {
+  rememberMediaDir(fp);
   if (currentCodeModeFromCtx(ctx)) {
     atomicWrite(fp, content == null ? '' : String(content), 'utf-8');
+    noteFileStamp(ctx, fp);
     ctx.currentFilePath = fp;
     setTitle(getWinByCtx(ctx), fp, false);
     app.addRecentDocument(fp);
@@ -361,6 +431,7 @@ function writeFile(fp, content, ctx) {
   }
   const normalized = normalizeImagePaths(content, fp);
   atomicWrite(fp, normalized, 'utf-8');
+  noteFileStamp(ctx, fp);
   ctx.currentFilePath = fp;
   setTitle(getWinByCtx(ctx), fp, false);
   app.addRecentDocument(fp);
@@ -472,13 +543,31 @@ ipcMain.handle('save-content', async (event, { content, saveAs } = {}) => {
     if (canceled || !filePath) return { saved: false };
     fp = filePath;
   }
+  if (!saveAs && fileChangedOutside(ctx, fp)) {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning',
+      buttons: ['取消', '覆盖保存'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '文件已在外部修改',
+      message: '这个文件在外部被改过',
+      detail: '继续保存会用编辑器里的内容盖掉外部修改。'
+    });
+    if (response !== 1) return { saved: false, conflict: true };
+  }
   try {
     writeFile(fp, content, ctx);
     const snapText = ctx.currentCodeMode ? String(content || '') : normalizeImagePaths(content, fp);
     snapshotVersion(fp, snapText);
     return { saved: true, path: fp };
   } catch (err) {
-    dialog.showErrorBox('保存失败', String(err));
+    await dialog.showMessageBox(win, {
+      type: 'error',
+      buttons: ['好'],
+      title: '保存失败',
+      message: '没有把内容写进文件',
+      detail: (err && err.message) ? err.message : String(err),
+    });
     return { saved: false };
   }
 });
@@ -508,6 +597,7 @@ ipcMain.handle('auto-save', async (event, { content } = {}) => {
   if (!ctx) return { saved: false };
   try {
     if (ctx.currentFilePath) {
+      if (fileChangedOutside(ctx, ctx.currentFilePath)) return { saved: false, conflict: true };
       writeFile(ctx.currentFilePath, content, ctx);
       const snapText = ctx.currentCodeMode ? String(content || '') : normalizeImagePaths(content, ctx.currentFilePath);
       snapshotVersion(ctx.currentFilePath, snapText);
@@ -957,6 +1047,85 @@ ipcMain.handle('export-docx', async (event, { buffer } = {}) => {
   catch (err) { dialog.showErrorBox('导出 Word 失败', String(err)); return { saved: false }; }
 });
 
+// 窗口比文档矮时，按视口高度往下截，再拼成一张图。
+// Windows / Linux 把窗口高度限制在屏幕内，整页截一张会缺掉下半截。
+async function stitchPngSlices(pngBuffers) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-png-'));
+  const stitchWin = new BrowserWindow({
+    show: false,
+    width: 800,
+    height: 600,
+    webPreferences: { sandbox: false, contextIsolation: true, nodeIntegration: false },
+  });
+  try {
+    pngBuffers.forEach((buf, i) => {
+      fs.writeFileSync(path.join(dir, String(i).padStart(4, '0') + '.png'), buf);
+    });
+    const html = `<!DOCTYPE html><meta charset="utf-8"><body><script>
+const names = ${JSON.stringify(pngBuffers.map((_, i) => String(i).padStart(4, '0') + '.png'))};
+(async () => {
+  const imgs = [];
+  for (const name of names) {
+    const img = new Image();
+    img.src = name;
+    await img.decode();
+    imgs.push(img);
+  }
+  const w = Math.max.apply(null, imgs.map(img => img.naturalWidth));
+  const h = imgs.reduce((sum, img) => sum + img.naturalHeight, 0);
+  if (w > 16384 || h > 16384) throw new Error('文档过长（拼图超过 16384 像素），建议改用 PDF 导出');
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  let y = 0;
+  for (const img of imgs) { ctx.drawImage(img, 0, y); y += img.naturalHeight; }
+  window.__png = canvas.toDataURL('image/png').split(',')[1];
+})().catch((err) => { window.__pngError = String(err && err.message || err); });
+</script></body>`;
+    fs.writeFileSync(path.join(dir, 'stitch.html'), html);
+    await stitchWin.loadFile(path.join(dir, 'stitch.html'));
+    const result = await stitchWin.webContents.executeJavaScript(`new Promise((resolve) => {
+      const timer = setInterval(() => {
+        if (window.__pngError) { clearInterval(timer); resolve({ error: window.__pngError }); }
+        else if (window.__png) { clearInterval(timer); resolve({ b64: window.__png }); }
+      }, 50);
+    })`);
+    if (!result || result.error) throw new Error(result && result.error || '拼图失败');
+    return Buffer.from(result.b64, 'base64');
+  } finally {
+    try { stitchWin.destroy(); } catch (err) { console.warn('[MarkMate]', err); }
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (err) { console.warn('[MarkMate]', err); }
+  }
+}
+
+async function captureBySlices(expWin, cssW, cssH, checkTimeout) {
+  try { expWin.webContents.setZoomFactor(1); } catch (err) { console.warn('[MarkMate:zoom]', err); }
+  await expWin.webContents.executeJavaScript(`(() => {
+    document.documentElement.style.height = '100%';
+    document.documentElement.style.overflow = 'auto';
+    document.body.style.overflow = 'visible';
+    document.body.style.minHeight = '${cssH}px';
+  })()`);
+  await new Promise(r => setTimeout(r, 150));
+  const [viewW, viewH] = expWin.getContentSize();
+  const sliceH = Math.max(1, viewH);
+  const capW = Math.min(cssW, viewW);
+  const slices = [];
+  for (let y = 0; y < cssH; y += sliceH) {
+    checkTimeout();
+    const h = Math.min(sliceH, cssH - y);
+    await expWin.webContents.executeJavaScript(`window.scrollTo(0, ${y})`);
+    await new Promise(r => setTimeout(r, 120));
+    const image = await expWin.webContents.capturePage({
+      x: 0, y: 0, width: capW, height: h,
+    });
+    slices.push(image.toPNG());
+  }
+  if (slices.length === 1) return slices[0];
+  return stitchPngSlices(slices);
+}
+
 ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
   const { ctx, win } = ctxFromEvent(event);
   if (!win) return { saved: false };
@@ -967,8 +1136,8 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
   //    并被移除，本次的 Promise 永远没人 resolve → 又走超时。从此每次导出都失败，只能重启。
   // 2) once 不区分发送方。两个窗口几乎同时导出时，A 的监听器会吃掉 B 的回复，
   //    A 导出的是 B 的文档内容，B 永远超时 —— 静默生成错误文件。
-  const html = await new Promise((resolve) => {
-    if (!win || win.isDestroyed()) return resolve('');
+  let html = await new Promise((resolve) => {
+    if (!win || win.isDestroyed()) return resolve(null);
     const wc = win.webContents;
     let settled = false;
     let timer = null;
@@ -981,13 +1150,16 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
     };
     function onReply(e, payload) {
       if (e.sender !== wc) return;          // 只认本窗口的回复
-      finish((payload && payload.html) || '');
+      if (payload && payload.ok) finish(payload.html == null ? '' : String(payload.html));
+      else finish(null);
     }
     ipcMain.on('export-png-html', onReply);
-    timer = setTimeout(() => finish(''), 5000);
+    timer = setTimeout(() => finish(null), 5000);
     wc.send('request-png-html');
   });
-  if (!html) { dialog.showErrorBox('导出长图失败', '获取页面内容超时'); return { saved: false }; }
+  // null 才是超时。空白文档的正文是空字符串，不能当成没拿到内容。
+  if (html == null) { dialog.showErrorBox('导出长图失败', '获取页面内容超时'); return { saved: false }; }
+  if (!String(html).trim()) html = '<p><br></p>';
   let expWin = null;
   try {
     const ratio = Math.max(1, Math.min(4, Number(pixelRatio) || 2));
@@ -1001,7 +1173,7 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
       extraCss: `html,body{overflow:visible !important;}body{padding:30px 40px;}.vditor-reset{max-width:${baseWidth}px;margin:0 auto;}*{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}.vditor-reset pre{overflow:visible;white-space:pre-wrap;word-break:break-word;}`
     });
     const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml);
-    const EXPORT_PNG_TIMEOUT = 15000;  // 15 秒总超时，避免长文档导出永久挂起
+    const EXPORT_PNG_TIMEOUT = 60000;
     const startedAt = Date.now();
     function checkTimeout() { if (Date.now() - startedAt > EXPORT_PNG_TIMEOUT) throw new Error('导出超时（文档可能过长，建议改用 PDF 导出）'); }
     await expWin.loadURL(dataUrl);
@@ -1013,50 +1185,11 @@ ipcMain.handle('export-png', async (event, { pixelRatio } = {}) => {
     expWin.setContentSize(targetW, targetH);
     await new Promise(r => setTimeout(r, 350));
     checkTimeout();
-    const [actualW, actualH] = expWin.getContentSize();
+    const [, actualH] = expWin.getContentSize();
     const fits = actualH >= targetH - 2;
-    let buf;
-    if (fits) {
-      const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
-      buf = image.toPNG();
-    } else {
-      // 窗口被系统 clamp 了（Windows 无 enableLargerThanScreen）
-      console.warn('[export-png] window clamped, retry @1x');
-      try { expWin.webContents.setZoomFactor(1); } catch (err) { console.warn('[MarkMate]', err); }
-      await new Promise(r => setTimeout(r, 150));
-      checkTimeout();
-      expWin.setContentSize(targetW, targetH);
-      await new Promise(r => setTimeout(r, 350));
-      checkTimeout();
-      const [w2, h2] = expWin.getContentSize();
-      if (h2 >= targetH - 2) {
-        const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
-        buf = image.toPNG();
-      } else if (!isMac) {
-        // Windows: 尝试逐级降低 zoom 适配内容
-        let winFit = false;
-        for (const z of [0.7, 0.5, 0.35]) {
-          try { expWin.webContents.setZoomFactor(z); } catch (err) { console.warn('[MarkMate:zoom]', err); break; }
-          await new Promise(r => setTimeout(r, 150));
-          checkTimeout();
-          expWin.setContentSize(targetW, targetH);
-          await new Promise(r => setTimeout(r, 350));
-          checkTimeout();
-          const [wz, hz] = expWin.getContentSize();
-          if (hz >= targetH - 2) {
-            const image = await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH });
-            buf = image.toPNG();
-            winFit = true;
-            break;
-          }
-        }
-        if (!winFit) {
-          throw new Error(`文档过长（需 ${targetH}px / 屏幕高 ${h2}px）。\nWindows 上导出超长文档 PNG 受限，建议改用 PDF 导出。`);
-        }
-      } else {
-        throw new Error(`文档过长（需 ${targetH}px / 实 ${h2}px）。`);
-      }
-    }
+    const buf = fits
+      ? (await expWin.webContents.capturePage({ x: 0, y: 0, width: targetW, height: targetH })).toPNG()
+      : await captureBySlices(expWin, targetW, targetH, checkTimeout);
     atomicWrite(filePath, buf);
     return { saved: true, path: filePath };
   } catch (err) { dialog.showErrorBox('导出长图失败', String(err)); return { saved: false }; }
@@ -1108,6 +1241,7 @@ function buildMenu() {
     {
       label: '文件',
       submenu: [
+        { label: '新建', accelerator: 'CmdOrCtrl+N', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('file-new'); } },
         { label: '新建标签页', accelerator: 'CmdOrCtrl+T', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('file-new'); } },
         { label: '打开…', accelerator: 'CmdOrCtrl+O', click: doOpen },
         { label: '快速打开…', accelerator: 'CmdOrCtrl+P', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('quick-open'); } },
@@ -1131,7 +1265,12 @@ function buildMenu() {
             { label: 'Word…', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('request-export', 'docx'); } },
             { label: '长图（PNG）…', click: () => { const w = BrowserWindow.getFocusedWindow(); if (w) w.webContents.send('request-export', 'png'); } }
           ]
-        }
+        },
+        // macOS 的退出在应用菜单里。Windows / Linux 没有那一栏，这里补上，快捷键是 Ctrl+Q。
+        ...(isMac ? [] : [
+          { type: 'separator' },
+          { role: 'quit', label: '退出', accelerator: 'CmdOrCtrl+Q' },
+        ]),
       ]
     },
     {
@@ -1195,7 +1334,8 @@ function buildMenu() {
       submenu: [
         { role: 'minimize', label: '最小化' },
         { role: 'zoom', label: '缩放' },
-        { role: 'close', label: '关闭窗口' }
+        // close 这个 role 自带 Ctrl+W，会和「关闭标签页」抢键。关窗口改成 Ctrl+Shift+W。
+        { role: 'close', label: '关闭窗口', accelerator: 'CmdOrCtrl+Shift+W' }
       ]
     }
   ];
@@ -1236,6 +1376,7 @@ ipcMain.on('renderer-ready', (event) => {
       codeMode: tab.codeMode || null,
     });
     if (tab.filePath) {
+      rememberMediaDir(tab.filePath);
       ctx.currentFilePath = tab.filePath;
       ctx.currentCodeMode = tab.codeMode;
       setTitle(win, tab.filePath, !!tab.dirty);
@@ -1256,6 +1397,14 @@ ipcMain.on('set-native-theme', (event, mode) => {
   if (mode === 'light' || mode === 'dark' || mode === 'system') nativeTheme.themeSource = mode;
 });
 
+function broadcastNativeTheme() {
+  const shouldDark = nativeTheme.shouldUseDarkColors;
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('native-theme-updated', shouldDark);
+  }
+}
+nativeTheme.on('updated', broadcastNativeTheme);
+
 // ============ IPC: 全角符号自动纠正状态（菜单 checkbox 同步）============
 ipcMain.on('autocorrect-state', (event, enabled) => {
   const menu = Menu.getApplicationMenu();
@@ -1273,6 +1422,7 @@ ipcMain.on('tab-activated', (event, { filePath, codeMode, dirty } = {}) => {
   const { ctx, win } = ctxFromEvent(event);
   if (!ctx || !win) return;
   ctx.currentFilePath = filePath || null;
+  if (ctx.currentFilePath) rememberMediaDir(ctx.currentFilePath);
   ctx.currentCodeMode = codeMode || null;
   ctx.currentDirty = !!dirty;
   setTitle(win, ctx.currentFilePath, ctx.currentDirty);
@@ -1311,7 +1461,7 @@ ipcMain.handle('list-directory', async (event, dirPath) => {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
     const codeExtRe = new RegExp(`\\.(${CODE_EXT_LIST.join('|')})$`, 'i');
     return entries
-      .filter(e => e.isDirectory() || /\.(md|markdown|mdown|mkd|txt)$/i.test(e.name) || codeExtRe.test(e.name))
+      .filter(e => e.isDirectory() || TEXT_FILE_RE.test(e.name) || codeExtRe.test(e.name))
       .map(e => ({ name: e.name, isDir: e.isDirectory(), path: path.join(dirPath, e.name) }))
       .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : (a.isDir ? -1 : 1)));
   } catch (err) { console.error('[MarkMate]', err); return []; }
@@ -1380,17 +1530,28 @@ ipcMain.handle('save-uploaded-image', async (event, { name, type, size, buffer }
 });
 
 // ============ 命令行参数 ============
+function argvToPath(arg) {
+  // Linux 桌面项的 Exec 用 %U，文件管理器传入的是 file:///home/用户/笔记.md，
+  // 不是本地路径。existsSync 对这种字符串直接返回 false，窗口能开、文件却没开。
+  if (/^file:/i.test(arg)) {
+    try { return fileURLToPath(arg); }
+    catch (err) { console.warn('[MarkMate:argv]', err); return null; }
+  }
+  return arg;
+}
+
 function fileFromArgv(argv) {
   // 不硬编码 argv 索引（不同打包方式/启动方式下 argv 布局不同），
   // 直接过滤出存在的文件路径
   const codeExtRe = new RegExp(`\\.(${CODE_EXT_LIST.join('|')})$`, 'i');
-  for (const a of argv) {
-    if (a.startsWith('-')) continue;
-    if (a === '.' || a === __dirname || a === process.execPath) continue;
-    try { if (!fs.existsSync(a)) continue; } catch (err) { console.warn('[MarkMate:argv]', err); continue; }
-    // 排除明显的非文件路径（目录、Electron 内部路径）
-    try { if (fs.statSync(a).isDirectory()) continue; } catch (err) { console.warn('[MarkMate:argv]', err); continue; }
-    if ((/\.(md|markdown|mdown|txt)$/i.test(a) || codeExtRe.test(a))) return a;
+  for (const raw of argv) {
+    if (!raw || raw.startsWith('-')) continue;
+    const a = argvToPath(raw);
+    if (!a || a === '.' || a === __dirname || a === process.execPath) continue;
+    try {
+      if (!fs.existsSync(a) || fs.statSync(a).isDirectory()) continue;
+    } catch (err) { console.warn('[MarkMate:argv]', err); continue; }
+    if (TEXT_FILE_RE.test(a) || codeExtRe.test(a)) return a;
   }
   return null;
 }
@@ -1504,12 +1665,9 @@ app.whenReady().then(() => {
 
   protocol.handle('mpmedia', (request) => {
     try {
-      // urlToLocalPath 内部用 path.resolve 解析 .. 并归一化，再校验在用户 home 目录内，防路径穿越
+      // urlToLocalPath 用 path.resolve 吃掉 ..。放行主目录、临时目录，以及本次打开过的文档目录。
       const resolved = urlToLocalPath(request.url);
-      const homeDir = path.resolve(require('os').homedir());
-      // Windows 文件系统大小写不敏感，盘符 / 用户目录大小写可能与 os.homedir() 不一致
-      const norm = (s) => process.platform === 'win32' ? s.toLowerCase() : s;
-      if (!norm(resolved).startsWith(norm(homeDir + path.sep)) && norm(resolved) !== norm(homeDir)) {
+      if (!mediaPathAllowed(resolved)) {
         return new Response('Forbidden', { status: 403 });
       }
       if (!/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i.test(resolved)) {
@@ -1563,3 +1721,7 @@ app.on('window-all-closed', () => {
   // darwin 下平时关掉所有窗口不退出（macOS 习惯），但如果这次是用户主动 ⌘Q 触发的，就必须退出
   if (quitRequested || process.platform !== 'darwin') app.quit();
 });
+
+if (process.env.MARKMATE_TEST === '1') {
+  module.exports = { fileFromArgv, mediaPathAllowed, rememberMediaDir };
+}

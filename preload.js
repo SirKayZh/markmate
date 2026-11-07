@@ -14,6 +14,9 @@ function pathForFile(file) {
 contextBridge.exposeInMainWorld('markmate', {
   // 平台信息（供渲染层适配 macOS / Windows 差异）
   platform: process.platform,
+  // electron-builder 便携版会设这两个环境变量。便携版的更新清单里只有安装包，
+  // 不能在这里下载后重启，否则会弹出 NSIS 安装程序，手里的 exe 还是旧的。
+  portable: !!(process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR),
 
   // 主进程 -> 渲染进程
   onFileOpened: (cb) => ipcRenderer.on('file-opened', (e, data) => cb(data)),
@@ -23,6 +26,7 @@ contextBridge.exposeInMainWorld('markmate', {
   onToggleSource: (cb) => ipcRenderer.on('toggle-source', () => cb()),
   onToggleTheme: (cb) => ipcRenderer.on('toggle-theme', () => cb()),
   onSetTheme: (cb) => ipcRenderer.on('set-theme', (e, mode) => cb(mode)),
+  onNativeThemeUpdated: (cb) => ipcRenderer.on('native-theme-updated', (e, shouldDark) => cb(!!shouldDark)),
   onToggleFocusMode: (cb) => ipcRenderer.on('toggle-focus-mode', () => cb()),
   onToggleTypewriterMode: (cb) => ipcRenderer.on('toggle-typewriter-mode', () => cb()),
   onNextStyleTheme: (cb) => ipcRenderer.on('next-style-theme', () => cb()),
@@ -56,7 +60,7 @@ contextBridge.exposeInMainWorld('markmate', {
   },
   exportPng: (pixelRatio) => ipcRenderer.invoke('export-png', { pixelRatio }),
   onRequestPngHtml: (cb) => ipcRenderer.on('request-png-html', () => cb()),
-  sendPngHtml: (html) => ipcRenderer.send('export-png-html', { html }),
+  sendPngHtml: (html) => ipcRenderer.send('export-png-html', { html: html == null ? '' : String(html), ok: true }),
   getExportResources: () => ipcRenderer.invoke('get-export-resources'),
   revealAssetsDir: () => ipcRenderer.invoke('reveal-assets-dir'),
   setDirty: (dirty) => ipcRenderer.send('set-dirty', dirty),
