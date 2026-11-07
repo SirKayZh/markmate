@@ -1,13 +1,13 @@
 # MarkMate ⚡
 
-> **你的 AI 文件，不该只用文本编辑器打开。** MarkMate 是为大模型工作流量身打造的**桌面文件编辑器**——一个应用搞定你每天面对的三类核心文件：**Markdown**（写作、文档、Prompt）、**JSON**（配置、输出结果）和 **JSONL**（训练数据、日志）。所见即所得编辑、对话气泡浏览、一键格式化、批量标注、多格式导出 —— 本地运行、界面精美。macOS & Windows 双平台。
+> **你的 AI 文件，不该只用文本编辑器打开。** MarkMate 是为大模型工作流量身打造的**桌面文件编辑器**——一个应用搞定你每天面对的三类核心文件：**Markdown**（写作、文档、Prompt）、**JSON**（配置、输出结果）和 **JSONL**（训练数据、日志）。所见即所得编辑、对话气泡浏览、一键格式化、批量标注、多格式导出 —— 本地运行、界面精美。macOS、Windows、Linux 三平台。
 >
 > **Your AI files deserve better than a text editor.** MarkMate is the LLM-era file workbench — one clean app for Markdown, JSON, and JSONL. WYSIWYG editing, conversation bubbles, one-click formatting, batch annotation, and multi-format export — all local-first.
 
-![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows-blue)
+![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows%20|%20Linux-blue)
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![release](https://img.shields.io/badge/release-v2.2.1-3b82f6)
+![release](https://img.shields.io/badge/release-v2.2.2-3b82f6)
 
 [English](README.md) · **简体中文** · [🌐 文档站](https://sirkayzh.github.io/markmate)
 
@@ -55,7 +55,7 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 |---|:---:|:---:|:---:|
 | **价格** | ✅ 免费开源 | ❌ $14.99 | ✅ 免费 |
 | **所见即所得 Markdown** | ✅ 即时渲染 | ✅ 即时渲染 | ❌ 预览分离 |
-| **macOS + Windows** | ✅ 双平台 | ✅ 双平台 | ✅ 双平台 |
+| **macOS + Windows + Linux** | ✅ 三平台 | ✅ 三平台 | ✅ 三平台 |
 | **JSONL 数据集查看器** | ✅ 对话气泡 + 统计 | ❌ 无 | ❌ |
 | **JSON / YAML / XML 编辑器** | ✅ 语法高亮 + 格式化 | ❌ 无 | ✅ |
 | **批量标注编辑** | ✅ 行内编辑 + 批量保存 | ❌ 无 | ❌ |
@@ -105,7 +105,7 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 ### 💻 JSON / YAML / XML 查看与编辑
 
 - **语法高亮**：Prism.js 着色，亮/暗双主题独立配色
-- **一键格式化**：⌥⌘L 美化 JSON/JSONL/XML 缩进
+- **一键格式化**：macOS 用 ⌥⌘L，Windows 用 Alt+Ctrl+L，Linux 用 Ctrl+Shift+L，美化 JSON/JSONL/XML 缩进
 - **文件类型图标**：按格式显示不同 emoji 徽标（📝 .md · 📊 .json · 📋 .xml · ⚙️ .yml/.yaml）
 - **零开销**：磁盘上仍是纯净的 `.json` / `.xml` / `.yaml` 文件，无任何额外标记
 
@@ -135,12 +135,12 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
   <img src="docs/images/screenshots/export-formats.png" width="720" alt="PDF/HTML/Word/PNG 导出">
 </p>
 
-### 🍎 macOS 深度集成（Windows 也可用）
+### 🍎 macOS 深度集成（Windows / Linux 也可用）
 
 - **拖拽打开**：文件拖到窗口 / Dock 图标 / 未启动应用上均可打开
 - **文件关联**：已注册 `.md` `.json` `.jsonl` `.yml` `.yaml` `.xml` `.txt`；可在 Finder 中设为默认编辑器
 - **原生体验**：内嵌红绿灯按钮、文档修改标记、最近打开菜单、状态栏字数统计
-- **自动升级**：内置版本检测（GitHub Releases）。Windows 可一键下载 + 重启安装；macOS 因未做公证签名，改为引导前往下载页手动更新（v2.0.0+）
+- **自动升级**：内置版本检测（GitHub Releases）。Windows 与 Linux（AppImage）可一键下载 + 重启安装；macOS 因未做公证签名，改为引导前往下载页手动更新（v2.0.0+）
 
 ---
 
@@ -149,18 +149,25 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 从 [Releases](https://github.com/SirKayZh/markmate/releases) 页面下载最新版本：
 
 **macOS：**
-- Apple 芯片（M1/M2/M3/M4…）：`MarkMate-2.2.1-arm64.dmg`
-- Intel：`MarkMate-2.2.1-x64.dmg`
+- Apple 芯片（M1/M2/M3/M4…）：`MarkMate-2.2.2-arm64.dmg`
+- Intel：`MarkMate-2.2.2-x64.dmg`
 
 **Windows：**
-- `MarkMate-2.2.1-x64-setup.exe` — 安装版（推荐）
-- `MarkMate-2.2.1-x64-portable.exe` — 便携版，解压即用
+- `MarkMate-2.2.2-x64-setup.exe` — 安装版（推荐）
+- `MarkMate-2.2.2-x64-portable.exe` — 便携版，解压即用
 
-> 两个平台的应用均**未经过代码签名/公证**。
+**Linux：**
+- `MarkMate-2.2.2-x86_64.AppImage` — 单文件免安装（推荐）。`chmod +x` 后直接运行；系统没有 FUSE 时改跑同版本的 `.run`
+- `MarkMate-2.2.2-x86_64.run` — 给没装 `libfuse2` 的系统。它会让 AppImage 解压后再启动
+- `MarkMate-2.2.2-amd64.deb` — Debian / Ubuntu 安装包，不依赖 FUSE
+
+> 三个平台的应用均**未经过代码签名/公证**。
 >
 > **macOS**：右键点击应用 → **打开**，或运行 `xattr -cr /Applications/MarkMate.app`
 >
 > **Windows**：SmartScreen 弹出时点击 **更多信息** → **仍要运行**
+>
+> **Linux**：先 `chmod +x`。有 FUSE 时直接跑 AppImage；双击没反应时改跑同名的 `.run`（不需要再装 `libfuse2`，也不用自己加 `--no-sandbox`）。deb 安装后从应用菜单打开即可。
 
 ### 设为默认编辑器
 
@@ -168,13 +175,18 @@ MarkMate 为**现代 AI 工作流**而生。你不再只是写文档——你还
 
 **Windows**：右键 `.md` → **打开方式** → **MarkMate** → **始终使用此应用**。
 
+**Linux**：右键 `.md` → **打开方式** → **MarkMate**（或在文件管理器的「打开方式」中设置）。
+
 ---
 
 ## ⌨️ 快捷键
 
-| 操作 | macOS | Windows |
+| 操作 | macOS | Windows / Linux |
 | --- | --- | --- |
 | 新建 | ⌘N | Ctrl+N |
+| 关闭标签页 | ⌘W | Ctrl+W |
+| 关闭窗口 | ⌘⇧W | Ctrl+Shift+W |
+| 退出 | ⌘Q | Ctrl+Q |
 | 打开 | ⌘O | Ctrl+O |
 | 快速打开 | ⌘P | Ctrl+P |
 | 保存 | ⌘S | Ctrl+S |
@@ -206,18 +218,20 @@ MARKMATE_DEBUG=1 npm start  # 启动并打开 DevTools
 ```bash
 npm run dmg            # 打 macOS DMG → release/
 npm run win            # 打 Windows（安装版 + 便携版）→ release/
+npm run linux          # 打 Linux（AppImage + deb）→ release/
+npm run linux:test     # 同步到 Ubuntu 并跑 Linux 回归，说明见 scripts/linux/README.md
 npm run release:patch  # bump 版本 + 打包 + 提交 + 打 tag
 npm run release:minor  # 新增功能
 npm run release:major  # 破坏性改动
 ```
 
-> **macOS 注意**：在 Apple 芯片上，`electron-builder` 内部的 `hdiutil` 打 DMG 步骤可能因 macOS 沙箱限制失败。本项目的打包脚本改用 `hdiutil makehybrid` + `convert` 绕开该限制。Windows 打包可在 macOS 上交叉编译（electron-builder 自动下载 Wine + NSIS）。
+> **macOS 注意**：在 Apple 芯片上，`electron-builder` 内部的 `hdiutil` 打 DMG 步骤可能因 macOS 沙箱限制失败。本项目的打包脚本改用 `hdiutil makehybrid` + `convert` 绕开该限制。Windows / Linux 打包可在 macOS 上交叉编译（electron-builder 自动下载所需工具链）。
 
 ---
 
 ## 🧱 技术栈
 
-- **[Electron](https://www.electronjs.org/) 31** —— 跨平台桌面外壳（macOS + Windows）
+- **[Electron](https://www.electronjs.org/) 31** —— 跨平台桌面外壳（macOS + Windows + Linux）
 - **[Vditor](https://github.com/Vanessa219/vditor) 3** —— Markdown IR（即时渲染）引擎
 - `main.js`（菜单 / 文件 IO / 自动保存 / 版本快照）+ `preload.js`（contextBridge IPC）+ `src/`（界面）
 
@@ -249,6 +263,7 @@ MarkMate 是一款**本地优先**的编辑器 —— 你的文档永远不会�
 - [ ] 自定义 CSS 主题
 - [x] PDF / HTML / Word / 长图 导出（v1.4.0）
 - [x] Windows 支持（v1.4.1）
+- [x] Linux 支持（AppImage + deb）
 - [x] 代码/配置文件查看与语法高亮（v1.5.0）
 - [x] JSONL 数据集查看器（对话气泡）（v2.0.0）
 - [x] JSONL 行内标注编辑（v2.0.0）

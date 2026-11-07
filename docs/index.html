@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MarkMate — 大模型时代文件编辑器 | macOS & Windows</title>
-  <meta name="description" content="MarkMate 是为大模型工作流量身打造的桌面文件编辑器。一个应用打通 Markdown 写作、JSONL 数据浏览、JSON 修复、批量标注、多格式导出全链路。免费开源，macOS & Windows。">
-  <meta name="keywords" content="Markdown编辑器, JSONL查看器, 数据集标注, JSON/YAML/XML, WYSIWYG编辑器, Typora替代, macOS编辑器, Windows编辑器, 大模型工具, 开源编辑器">
+  <title>MarkMate — 大模型时代文件编辑器 | macOS / Windows / Linux</title>
+  <meta name="description" content="MarkMate 是为大模型工作流量身打造的桌面文件编辑器。一个应用打通 Markdown 写作、JSONL 数据浏览、JSON 修复、批量标注、多格式导出全链路。免费开源，macOS / Windows / Linux。">
+  <meta name="keywords" content="Markdown编辑器, JSONL查看器, 数据集标注, JSON/YAML/XML, WYSIWYG编辑器, Typora替代, macOS编辑器, Windows编辑器, Linux编辑器, 大模型工具, 开源编辑器">
   <meta name="author" content="MarkMate Contributors">
   <meta property="og:title" content="MarkMate — 大模型时代文件编辑器">
   <meta property="og:description" content="一个应用打通 MD 写作、JSONL 浏览、JSON 修复、数据标注、多格式导出全链路。">
@@ -63,15 +63,16 @@
     <p class="subtitle">
       为大模型工作流量身打造的桌面文件编辑器 —<br>
       <strong>Markdown 写作 + JSONL 数据浏览 + JSON 修复 + 批量标注 + 多格式导出</strong>，一个应用全搞定。<br>
-      macOS & Windows 双平台，免费开源，本地文件永远属于你。
+      macOS、Windows、Linux 三平台，免费开源，本地文件永远属于你。
     </p>
     <div class="hero-actions">
-      <a href="download.html" class="btn btn-primary btn-lg">⬇ 下载 MarkMate v2.2.1</a>
+      <a href="download.html" class="btn btn-primary btn-lg">⬇ 下载 MarkMate v2.2.2</a>
       <a href="https://github.com/SirKayZh/markmate" class="btn btn-secondary btn-lg" target="_blank" rel="noopener">GitHub 仓库</a>
     </div>
     <div style="display:flex;gap:12px;justify-content:center;margin-top:12px;">
       <span class="platform-badge">🍎 macOS (Apple Silicon + Intel)</span>
       <span class="platform-badge">🪟 Windows x64</span>
+      <span class="platform-badge">🐧 Linux x64</span>
       <span class="platform-badge">📜 MIT 开源</span>
     </div>
   </div>
@@ -120,7 +121,7 @@
       <div class="feature-card">
         <span class="icon">🔄</span>
         <h3>自动更新</h3>
-        <p>启动后静默检查 GitHub Release，发现新版弹出横幅。Windows 一键下载 + 重启安装；macOS 因未做公证，引导前往下载页手动更新（v2.0.0+）。</p>
+        <p>启动后静默检查 GitHub Release，发现新版弹出横幅。Windows 与 Linux（AppImage）一键下载 + 重启安装；macOS 因未做公证，引导前往下载页手动更新（v2.0.0+）。</p>
       </div>
       <div class="feature-card">
         <span class="icon">🎨</span>
@@ -168,7 +169,7 @@
             <td class="cross">预览分离</td>
           </tr>
           <tr>
-            <td>macOS + Windows</td>
+            <td>macOS + Windows + Linux</td>
             <td class="check">✓</td>
             <td class="check">✓</td>
             <td class="check">✓</td>
@@ -239,7 +240,7 @@
     <h2 class="section-title">⌨️ 快捷键速查</h2>
     <table class="shortcuts">
       <thead>
-        <tr><th>操作</th><th>macOS</th><th>Windows</th></tr>
+        <tr><th>操作</th><th>macOS</th><th>Windows / Linux</th></tr>
       </thead>
       <tbody>
         <tr><td>新标签页</td><td><kbd>⌘T</kbd></td><td><kbd>Ctrl+T</kbd></td></tr>
@@ -252,7 +253,7 @@
         <tr><td>切换大纲</td><td><kbd>⌘\</kbd></td><td><kbd>Ctrl+\</kbd></td></tr>
         <tr><td>切换源码</td><td><kbd>⌘E</kbd></td><td><kbd>Ctrl+E</kbd></td></tr>
         <tr><td>专注模式</td><td><kbd>⌘⇧F</kbd></td><td><kbd>Ctrl+⇧F</kbd></td></tr>
-        <tr><td>格式化代码</td><td><kbd>⌥⌘L</kbd></td><td><kbd>Alt+Ctrl+L</kbd></td></tr>
+        <tr><td>格式化代码</td><td><kbd>⌥⌘L</kbd></td><td><kbd>Alt+Ctrl+L</kbd>（Windows）/ <kbd>Ctrl+Shift+L</kbd>（Linux）</td></tr>
         <tr><td>导出 PDF</td><td><kbd>⌘⇧P</kbd></td><td><kbd>Ctrl+⇧P</kbd></td></tr>
         <tr><td>切换主题</td><td><kbd>⌘/</kbd></td><td><kbd>Ctrl+/</kbd></td></tr>
         <tr><td>收藏文件</td><td><kbd>⌘D</kbd></td><td><kbd>Ctrl+D</kbd></td></tr>
@@ -290,7 +291,7 @@
   <div class="container">
     <h2>准备好试试 MarkMate 了吗？</h2>
     <p>免费、开源、本地文件永远属于你。</p>
-    <a href="download.html" class="btn btn-primary btn-lg">⬇ 免费下载 v2.2.1</a>
+    <a href="download.html" class="btn btn-primary btn-lg">⬇ 免费下载 v2.2.2</a>
   </div>
 </section>
 

@@ -1,13 +1,13 @@
 # MarkMate ⚡
 
-> **Your AI files deserve better than a text editor.** MarkMate is the **LLM-era file workbench** — one clean desktop app that handles the three files you touch every day: **Markdown** (specs, docs, prompts), **JSON** (configs, outputs), and **JSONL** (datasets, logs). WYSIWYG editing, conversation bubble browsing, one-click formatting, batch annotation, and multi-format export — all in a beautiful, local-first UI. macOS & Windows.
+> **Your AI files deserve better than a text editor.** MarkMate is the **LLM-era file workbench** — one clean desktop app that handles the three files you touch every day: **Markdown** (specs, docs, prompts), **JSON** (configs, outputs), and **JSONL** (datasets, logs). WYSIWYG editing, conversation bubble browsing, one-click formatting, batch annotation, and multi-format export — all in a beautiful, local-first UI. macOS, Windows & Linux.
 >
 > **你的 AI 文件，不该只用文本编辑器打开。** MarkMate 是为大模型工作流量身打造的桌面文件编辑器。一个应用打通 MD 写作、JSONL 数据浏览、JSON 修复、数据标注、多格式导出全链路。
 
-![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows-blue)
+![platform](https://img.shields.io/badge/platform-macOS%20|%20Windows%20|%20Linux-blue)
 ![electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![release](https://img.shields.io/badge/release-v2.2.1-3b82f6)
+![release](https://img.shields.io/badge/release-v2.2.2-3b82f6)
 
 **English** · [简体中文](README.zh-CN.md) · [🌐 Documentation](https://sirkayzh.github.io/markmate)
 
@@ -55,7 +55,7 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 |---|:---:|:---:|:---:|
 | **Price** | ✅ Free & Open Source | ❌ $14.99 | ✅ Free |
 | **WYSIWYG Markdown** | ✅ Instant render | ✅ Instant render | ❌ Split preview |
-| **macOS + Windows** | ✅ Both | ✅ Both | ✅ Both |
+| **macOS + Windows + Linux** | ✅ All | ✅ All | ✅ All |
 | **JSONL Dataset Viewer** | ✅ Chat bubbles + stats | ❌ None | ❌ |
 | **JSON / YAML / XML Editor** | ✅ Syntax highlight + format | ❌ None | ✅ |
 | **Batch Annotation** | ✅ Inline editing + batch save | ❌ None | ❌ |
@@ -135,12 +135,12 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
   <img src="docs/images/screenshots/export-formats.png" width="720" alt="Export to PDF/HTML/Word/PNG">
 </p>
 
-### 🍎 macOS Integration (also runs on Windows)
+### 🍎 macOS Integration (also runs on Windows & Linux)
 
 - **Drag & drop to open** — drag files onto the window, Dock icon, or closed app
 - **File association** — registered handler for `.md` `.json` `.jsonl` `.yml` `.yaml` `.xml` `.txt`; set as default in Finder
 - **Native feel** — inset traffic lights, document-dirty dot, recent files menu, word count in status bar
-- **Auto-update** — built-in version check via GitHub Releases; one-click download + restart on Windows. On macOS the app is not notarized, so it links you to the download page instead (v2.0.0+)
+- **Auto-update** — built-in version check via GitHub Releases; one-click download + restart on Windows and Linux (AppImage). On macOS the app is not notarized, so it links you to the download page instead (v2.0.0+)
 
 ---
 
@@ -149,18 +149,25 @@ MarkMate is built for the **modern AI workflow**. You're not just writing docs a
 Download from [Releases](https://github.com/SirKayZh/markmate/releases):
 
 **macOS:**
-- Apple Silicon (M1/M2/M3/M4…): `MarkMate-2.2.1-arm64.dmg`
-- Intel: `MarkMate-2.2.1-x64.dmg`
+- Apple Silicon (M1/M2/M3/M4…): `MarkMate-2.2.2-arm64.dmg`
+- Intel: `MarkMate-2.2.2-x64.dmg`
 
 **Windows:**
-- `MarkMate-2.2.1-x64-setup.exe` — NSIS installer (recommended)
-- `MarkMate-2.2.1-x64-portable.exe` — standalone, no install needed
+- `MarkMate-2.2.2-x64-setup.exe` — NSIS installer (recommended)
+- `MarkMate-2.2.2-x64-portable.exe` — standalone, no install needed
 
-> The app is **not code-signed / notarized** on either platform.
+**Linux:**
+- `MarkMate-2.2.2-x86_64.AppImage` — single file, no install needed (recommended). `chmod +x` and run it; if the system has no FUSE, run the matching `.run` instead
+- `MarkMate-2.2.2-x86_64.run` — for machines without `libfuse2`. It extracts the AppImage and starts it
+- `MarkMate-2.2.2-amd64.deb` — Debian / Ubuntu package; does not need FUSE
+
+> The app is **not code-signed / notarized** on any platform.
 >
 > **macOS**: right-click app → **Open**, or run `xattr -cr /Applications/MarkMate.app`
 >
 > **Windows**: click **More info** → **Run anyway** when SmartScreen prompts
+>
+> **Linux**: `chmod +x` first. Run the AppImage when FUSE is available; if a double-click does nothing, run the matching `.run` (no `libfuse2` install and no manual `--no-sandbox`). The deb build opens from the app menu.
 
 ### Set as Default Editor
 
@@ -168,13 +175,18 @@ Download from [Releases](https://github.com/SirKayZh/markmate/releases):
 
 **Windows:** right-click `.md` → **Open with** → **MarkMate** → **Always use this app**.
 
+**Linux:** right-click `.md` → **Open With** → **MarkMate** (or set it in your file manager's "Open With" dialog).
+
 ---
 
 ## ⌨️ Keyboard Shortcuts
 
-| Action | macOS | Windows |
+| Action | macOS | Windows / Linux |
 | --- | --- | --- |
 | New | ⌘N | Ctrl+N |
+| Close tab | ⌘W | Ctrl+W |
+| Close window | ⌘⇧W | Ctrl+Shift+W |
+| Quit | ⌘Q | Ctrl+Q |
 | Open | ⌘O | Ctrl+O |
 | Quick Open | ⌘P | Ctrl+P |
 | Save | ⌘S | Ctrl+S |
@@ -206,18 +218,19 @@ MARKMATE_DEBUG=1 npm start  # with DevTools
 ```bash
 npm run dmg            # build macOS DMG → release/
 npm run win            # build Windows (NSIS + portable) → release/
+npm run linux          # build Linux (AppImage + deb) → release/
 npm run release:patch  # bump patch + build + commit + tag
 npm run release:minor  # bump minor + build + commit + tag
 npm run release:major  # bump major + build + commit + tag
 ```
 
-> **macOS note**: on Apple Silicon, `electron-builder`'s internal `hdiutil` DMG step may fail due to macOS sandbox restrictions. The project's build script uses `hdiutil makehybrid` + `convert` as a workaround. Windows builds work cross-platform from macOS (electron-builder auto-downloads Wine + NSIS).
+> **macOS note**: on Apple Silicon, `electron-builder`'s internal `hdiutil` DMG step may fail due to macOS sandbox restrictions. The project's build script uses `hdiutil makehybrid` + `convert` as a workaround. Windows and Linux builds work cross-platform from macOS (electron-builder auto-downloads the required toolchains).
 
 ---
 
 ## 🧱 Tech Stack
 
-- **[Electron](https://www.electronjs.org/) 31** — cross-platform desktop shell (macOS + Windows)
+- **[Electron](https://www.electronjs.org/) 31** — cross-platform desktop shell (macOS + Windows + Linux)
 - **[Vditor](https://github.com/Vanessa219/vditor) 3** — Markdown IR (instant rendering) engine
 - `main.js` (menu / file IO / auto-save / version snapshots) + `preload.js` (contextBridge IPC) + `src/` (UI)
 
@@ -249,6 +262,7 @@ Issues and PRs are welcome! Ideas for the roadmap:
 - [ ] Custom CSS themes
 - [x] PDF / HTML / Word / Long image export (v1.4.0)
 - [x] Windows support (v1.4.1)
+- [x] Linux support (AppImage + deb)
 - [x] Code / config file viewer with syntax highlighting (v1.5.0)
 - [x] JSONL dataset viewer with conversation bubbles (v2.0.0)
 - [x] Inline annotation editing for JSONL datasets (v2.0.0)
