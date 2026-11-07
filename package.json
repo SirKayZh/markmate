@@ -1,6 +1,6 @@
 {
   "name": "markmate",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "A lightweight WYSIWYG Markdown editor for macOS, Windows & Linux — instant editing, outline navigation, auto-save, JSON/YAML/XML viewer, and PDF/HTML/Word export.",
   "main": "main.js",
   "author": "MarkMate Contributors",
@@ -102,7 +102,9 @@
     "linux": {
       "icon": "build/icons",
       "category": "Office",
-      "executableArgs": ["--no-sandbox"],
+      "executableArgs": [
+        "--no-sandbox"
+      ],
       "desktop": {
         "StartupWMClass": "markmate"
       },
@@ -182,7 +184,10 @@
       ]
     },
     "appImage": {
-      "executableArgs": ["--no-sandbox", "--appimage-extract-and-run"]
+      "executableArgs": [
+        "--no-sandbox",
+        "--appimage-extract-and-run"
+      ]
     },
     "fileAssociations": [
       {
